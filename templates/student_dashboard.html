@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Dashboard — Student Feedback{% endblock %}
+
+{% block content %}
+<h1>Welcome, {{ user.name }}</h1>
+<p class="subtitle">Submit feedback or view your submission history below.</p>
+
+<!-- ===== FEEDBACK SUBMISSION FORM ===== -->
+<div class="card">
+    <h2>Submit New Feedback</h2>
+    <form method="POST" action="{{ url_for('student.dashboard') }}">
+        <div class="form-row">
+            <div class="form-group">
+                <label for="category">Category *</label>
+                <select id="category" name="category" required>
+                    <option value="">— Select —</option>
+                    {% for cat in ['Food', 'Faculty', 'Infrastructure', 'Events', 'Other'] %}
+                        <option value="{{ cat }}" {{ 'selected' if submitted.category == cat }}>{% if submitted.category == cat %}{{ cat }} (changed){% else %}{{ cat }}{% endif %}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="rating">Rating *</label>
+                <select id="rating" name="rating" required>
+                    <option value="">— Rate —</option>
+                    {% for r in [1, 2, 3, 4, 5] %}
+                        <option value="{{ r }}" {{ 'selected' if submitted.rating|string() == r|string() }}>{{ "⭐" * r }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="comment">Comment *</label>
+            <textarea id="comment" name="comment" rows="4" required placeholder="Describe your feedback...">{{ submitted.comment }}</textarea>
+        </div>
+
+        <div class="checkbox-group">
+            <input type="checkbox" id="anonymous" name="anonymous" {{ 'checked' if submitted.anonymous }}>
+            <label for="anonymous">Submit anonymously</label>
+        </div>
+
+        <button type="submit" class="btn-primary">Submit Feedback</button>
+    </form>
+</div>
+
+<!-- ===== FEEDBACK HISTORY TABLE ===== -->
+<div class="card history-card">
+    <h2>Your Feedback History</h2>
+    {% if feedback_history %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Rating</th>
+                    <th>Status</th>
+                    <th>Anon.</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fb in feedback_history %}
+                <tr>
+                    <td>{{ fb.created_at.strftime('%d %b %Y') }}</td>
+                    <td>{{ fb.category }}</td>
+                    <td>{{ "⭐" * fb.rating }}</td>
+                    <td><span class="badge badge-{{ fb.status|lower|replace(' ', '-') }}">{{ fb.status }}</span></td>
+                    <td>{% if fb.is_anonymous %}Yes{% else %}No{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="empty-state">You haven't submitted any feedback yet. Use the form above to get started!</p>
+    {% endif %}
+</div>
+{% endblock %}

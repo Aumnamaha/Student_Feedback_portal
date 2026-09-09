@@ -1,0 +1,112 @@
+/* Global styles */
+:root {
+    --primary-color: #4a90d9;
+    --bg-color: #f5f7fa;
+    --text-color: #333;
+    --card-bg: #fff;
+    --danger: #e74c3c;
+    --success: #2ecc71;
+    --warning: #f39c12;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--bg-color);
+    color: var(--text-color);
+}
+
+/* --- Navbar --- */
+.navbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 2rem;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,.1);
+}
+
+.navbar .brand { font-weight: 700; color: var(--primary-color); text-decoration: none; }
+.nav-links a { margin-left: 1rem; color: var(--text-color); text-decoration: none; }
+
+/* --- Flash messages --- */
+.flash-messages { max-width: 960px; margin: 1rem auto; padding: 0 1rem; }
+.flash { padding: 0.75rem 1rem; border-radius: 4px; margin-bottom: 0.5rem; }
+.flash-error   { background: #fde8e8; color: var(--danger); border-left: 4px solid var(--danger); }
+.flash-success { background: #e8fce8; color: #1a7f1a; border-left: 4px solid var(--success); }
+.flash-warning { background: #fff8e1; color: #b36b00; border-left: 4px solid var(--warning); }
+
+/* --- Layout --- */
+.container { max-width: 960px; margin: 2rem auto; padding: 0 1rem; }
+
+h1 { font-size: 1.75rem; margin-bottom: 0.25rem; }
+.subtitle { color: #666; margin-bottom: 2rem; }
+
+/* --- Cards --- */
+.card {
+    background: var(--card-bg);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-bottom: 1.5rem;
+    box-shadow: 0 2px 6px rgba(0,0,0,.07);
+}
+
+.card h2 { font-size: 1.25rem; margin-bottom: 1rem; padding-bottom: 0.5rem; border-bottom: 1px solid #eee; }
+
+/* --- Forms --- */
+.form-group { margin-bottom: 1rem; }
+.form-group label { display: block; margin-bottom: 0.3rem; font-weight: 600; font-size: 0.9rem; }
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%; padding: 0.6rem 0.75rem; border: 1px solid #ccc;
+    border-radius: 4px; font-size: 1rem; font-family: inherit;
+}
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 2px rgba(74,144,217,.2); }
+
+.form-row { display: grid; grid-template-columns: 2fr 1fr; gap: 1rem; }
+
+.checkbox-group { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem; }
+.checkbox-group input[type="checkbox"] { width: auto; }
+.checkbox-group label { font-weight: 400; }
+
+.btn-primary {
+    padding: 0.7rem 1.5rem; background: var(--primary-color); color: #fff;
+    border: none; border-radius: 4px; font-size: 1rem; cursor: pointer;
+}
+.btn-primary:hover { opacity: 0.9; }
+
+/* --- Buttons --- */
+.btn-logout {
+    background: none; border: 1px solid #ccc; padding: 0.3rem 0.75rem;
+    border-radius: 4px; cursor: pointer; font-size: 0.85rem;
+}
+
+/* --- Auth forms --- */
+.auth-form { max-width: 420px; margin: 3rem auto; }
+.form-footer { text-align: center; margin-top: 1rem; font-size: 0.9rem; }
+.form-footer a { color: var(--primary-color); }
+
+/* --- Tables --- */
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #e0e0e0; font-size: 0.95rem; }
+th { background: #f8f9fa; font-weight: 600; white-space: nowrap; }
+
+/* --- Status badges --- */
+.badge { display: inline-block; padding: 0.2rem 0.5rem; border-radius: 3px; font-size: 0.8rem; font-weight: 600; }
+.badge-pending    { background: #fff3cd; color: #856404; }
+.badge-in-progress { background: #cce5ff; color: #004085; }
+.badge-resolved   { background: #d4edda; color: #155724; }
+
+/* --- Empty state --- */
+.empty-state { text-align: center; padding: 2rem; color: #888; font-style: italic; }
+
+/* --- Responsive --- */
+@media (max-width: 600px) {
+    .form-row { grid-template-columns: 1fr; gap: 0; }
+    .navbar { flex-direction: column; gap: 0.5rem; padding: 1rem; }
+    th, td { padding: 0.5rem 0.4rem; font-size: 0.85rem; }
+}
