@@ -1,7 +1,54 @@
 {% extends "base.html" %}
 {% block title %}Reports — Student Feedback{% endblock %}
+
 {% block content %}
-<!-- Summary charts: avg rating, count per category, trends -->
 <h1>Reports</h1>
-<p>Template placeholder.</p>
+<p class="subtitle">Summary statistics across all feedback.</p>
+
+<!-- ===== AVG RATING BY CATEGORY ===== -->
+<div class="card">
+    <h2>Average Rating by Category</h2>
+    {% if category_stats %}
+        <table>
+            <thead>
+                <tr><th>Category</th><th>Avg Rating</th><th>Total Count</th></tr>
+            </thead>
+            <tbody>
+                {% for cat, avg_r, count in category_stats %}
+                <tr>
+                    <td>{{ cat }}</td>
+                    <td>{{ "%.1f"|format(avg_r) }} {{ "⭐" * (avg_r|round(0)|int) }}</td>
+                    <td>{{ count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="empty-state">No feedback data available.</p>
+    {% endif %}
+</div>
+
+<!-- ===== COUNT BY STATUS ===== -->
+<div class="card">
+    <h2>Feedback by Status</h2>
+    {% if status_counts %}
+        <table>
+            <thead>
+                <tr><th>Status</th><th>Count</th></tr>
+            </thead>
+            <tbody>
+                {% for st, count in status_counts %}
+                <tr>
+                    <td><span class="badge badge-{{ st|lower|replace(' ', '-') }}">{{ st }}</span></td>
+                    <td>{{ count }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="empty-state">No feedback data available.</p>
+    {% endif %}
+</div>
+
+<a href="{{ url_for('admin.dashboard') }}" style="display:inline-block; margin-top:1rem;">← Back to Dashboard</a>
 {% endblock %}

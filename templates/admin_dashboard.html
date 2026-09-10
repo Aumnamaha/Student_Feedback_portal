@@ -1,7 +1,77 @@
 {% extends "base.html" %}
 {% block title %}Admin Dashboard — Student Feedback{% endblock %}
+
 {% block content %}
-<!-- Admin dashboard: all feedback table with filters -->
 <h1>Admin Dashboard</h1>
-<p>Template placeholder.</p>
+<p class="subtitle">{{ total_count }} feedback entry{{ 'ies' if total_count != 1 else 'y' }}</p>
+
+<!-- ===== FILTER BAR ===== -->
+<form method="GET" action="{{ url_for('admin.dashboard') }}" class="filters">
+    <select name="category">
+        <option value="">All Categories</option>
+        {% for cat in ['Food', 'Faculty', 'Infrastructure', 'Events', 'Other'] %}
+            <option value="{{ cat }}" {{ 'selected' if filters.category == cat }}>{{ cat }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="rating">
+        <option value="">All Ratings</option>
+        {% for r in [1, 2, 3, 4, 5] %}
+            <option value="{{ r }}" {{ 'selected' if filters.rating == r|string }}>{{ "⭐" * r }}</option>
+        {% endfor %}
+    </select>
+
+    <select name="status">
+        <option value="">All Statuses</option>
+        {% for s in ['Pending', 'In Progress', 'Resolved'] %}
+            <option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ s }}</option>
+        {% endfor %}
+    </select>
+
+    <input type="date" name="date_from" placeholder="From" value="{{ filters.date_from }}">
+    <input type="date" name="date_to" placeholder="To" value="{{ filters.date_to }}">
+
+    <input type="text" name="keyword" placeholder="Search comments..." value="{{ filters.keyword }}">
+
+    <button type="submit" class="btn-primary">Filter</button>
+    {% if has_active_filters %}
+        <a href="{{ url_for('admin.dashboard') }}" style="padding: 0.7rem; color: var(--primary-color); text-decoration: none;">Clear</a>
+    {% endif %}
+</form>
+
+<!-- ===== FEEDBACK TABLE ===== -->
+<div class="card">
+    {% if feedback_list %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Rating</th>
+                    <th>Status</th>
+                    <th>Anon.</th>
+                    <th>Student</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fb in feedback_list %}
+                <tr>
+                    <td>{{ fb.id }}</td>
+                    <td>{{ fb.created_at.strftime('%d/%m/%Y') }}</td>
+                    <td>{{ fb.category }}</td>
+                    <td>{{ "⭐" * fb.rating }}</td>
+                    <td><span class="badge badge-{{ fb.status|lower|replace(' ', '-') }}">{{ fb.status }}</span></td>
+                    <td>{% if fb.is_anonymous %}Yes{% else %}No{% endif %}</td>
+                    <td>{{ fb.student_name or '—' }}</td>
+                    <td><a href="{{ url_for('admin.feedback_detail', fb_id=fb.id) }}">View</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="empty-state">No feedback matches your filters.</p>
+    {% endif %}
+</div>
 {% endblock %}

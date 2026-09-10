@@ -1,7 +1,68 @@
 {% extends "base.html" %}
-{% block title %}Feedback Detail — Student Feedback{% endblock %}
+{% block title %}Feedback #{{ feedback.id }} — Student Feedback{% endblock %}
+
 {% block content %}
-<!-- View/update single feedback status -->
-<h1>Feedback #{{ feedback.id }}</h1>
-<p>Template placeholder.</p>
+<a href="{{ url_for('admin.dashboard') }}" style="color: var(--primary-color); text-decoration: none;">← Back to Dashboard</a>
+
+<div class="card">
+    <h2>Feedback #{{ feedback.id }}</h2>
+
+    <!-- Status update form -->
+    <form method="POST" action="{{ url_for('admin.update_status', fb_id=feedback.id) }}" style="margin-bottom: 1.5rem;">
+        <label for="status">Update Status:</label>
+        <div style="display: flex; gap: 0.75rem; align-items: center;">
+            <select id="status" name="status" required style="width: auto; min-width: 180px;">
+                {% for s in ['Pending', 'In Progress', 'Resolved'] %}
+                    <option value="{{ s }}" {{ 'selected' if feedback.status == s }}>{{ s }}</option>
+                {% endfor %}
+            </select>
+            <button type="submit" class="btn-primary">Update</button>
+        </div>
+    </form>
+
+    <!-- Feedback details -->
+    <dl style="display: grid; grid-template-columns: 180px 1fr; gap: 0.5rem 1rem;">
+        <dt><strong>ID</strong></dt>
+        <dd>{{ feedback.id }}</dd>
+
+        <dt><strong>Category</strong></dt>
+        <dd>{{ feedback.category }}</dd>
+
+        <dt><strong>Rating</strong></dt>
+        <dd>{{ "⭐" * feedback.rating }} ({{ feedback.rating }}/5)</dd>
+
+        <dt><strong>Status</strong></dt>
+        <dd><span class="badge badge-{{ feedback.status|lower|replace(' ', '-') }}">{{ feedback.status }}</span></dd>
+
+        <dt><strong>Anonymous</strong></dt>
+        <dd>{% if is_anonymous %}Yes{% else %}No{% endif %}</dd>
+
+        {% if not is_anonymous and feedback.student_name %}
+            <dt><strong>Student Name</strong></dt>
+            <dd>{{ feedback.student_name }}</dd>
+
+            <dt><strong>Email</strong></dt>
+            <dd>{{ feedback.student_email or '—' }}</dd>
+
+            <dt><strong>Roll Number</strong></dt>
+            <dd>{{ feedback.student_roll_number or '—' }}</dd>
+        {% else %}
+            <dt><strong>Student Name</strong></dt>
+            <dd style="color: #888; font-style: italic;">Anonymous — student identity hidden per security policy</dd>
+        {% endif %}
+
+        <dt><strong>Comment</strong></dt>
+        <dd style="white-space: pre-wrap;">{{ feedback.comment }}</dd>
+
+        {% if feedback.created_at %}
+            <dt><strong>Submitted</strong></dt>
+            <dd>{{ feedback.created_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+        {% endif %}
+
+        {% if feedback.updated_at %}
+            <dt><strong>Last Updated</strong></dt>
+            <dd>{{ feedback.updated_at.strftime('%d/%m/%Y %H:%M') }}</dd>
+        {% endif %}
+    </dl>
+</div>
 {% endblock %}

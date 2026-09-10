@@ -110,3 +110,30 @@ th { background: #f8f9fa; font-weight: 600; white-space: nowrap; }
     .navbar { flex-direction: column; gap: 0.5rem; padding: 1rem; }
     th, td { padding: 0.5rem 0.4rem; font-size: 0.85rem; }
 }
+
+/* --- Filter bar (admin) --- */
+.filters-form { margin-bottom: 1.5rem; }
+.filter-row { display: flex; gap: 0.75rem; align-items: flex-end; flex-wrap: wrap; padding: 1rem; background: #fff; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,.07); }
+.filter-row .form-group { margin-bottom: 0; min-width: 140px; flex: 1; }
+.filter-actions { display: flex; gap: 0.5rem; align-items: center; padding-top: 1.2rem; }
+.btn-reset { color: var(--primary-color); text-decoration: underline; cursor: pointer; background: none; border: none; font-size: 0.9rem; }
+
+/* --- Detail view --- */
+.detail-header { display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem; }
+.detail-grid { list-style: none; display: grid; grid-template-columns: auto 1fr; gap: 0.75rem 2rem; font-size: 0.95rem; }
+.detail-grid dt { font-weight: 600; color: #555; white-space: nowrap; padding-top: 0.3rem; }
+.detail-grid dd { margin: 0; }
+.comment-block { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee; }
+.comment-block h3 { font-size: 1rem; margin-bottom: 0.5rem; color: #555; }
+.comment-block p { white-space: pre-wrap; line-height: 1.6; background: #fafafa; padding: 1rem; border-radius: 4px; }
+
+/* --- Responsive filters --- */
+@media (max-width: 900px) {
+    .filter-row { flex-direction: column; align-items: stretch; }
+    .filter-actions { justify-content: center; padding-top: 0.5rem; }
+}
+
+@media (max-width: 600px) {
+    .detail-grid { grid-template-columns: 1fr; gap: 0.4rem; }
+    th, td { padding: 0.5rem 0.4rem; font-size: 0.85rem; }
+}
