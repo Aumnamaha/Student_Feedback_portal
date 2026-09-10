@@ -5,7 +5,7 @@
 <h1>Reports</h1>
 <p class="subtitle">Summary statistics across all feedback.</p>
 
-<!-- ===== AVG RATING BY CATEGORY ===== -->
+<!-- ===== AVG RATING BY CATEGORY (with bar chart) ===== -->
 <div class="card">
     <h2>Average Rating by Category</h2>
     {% if category_stats %}
@@ -14,11 +14,14 @@
                 <tr><th>Category</th><th>Avg Rating</th><th>Total Count</th></tr>
             </thead>
             <tbody>
-                {% for cat, avg_r, count in category_stats %}
+                {% for row in category_stats %}
                 <tr>
-                    <td>{{ cat }}</td>
-                    <td>{{ "%.1f"|format(avg_r) }} {{ "⭐" * (avg_r|round(0)|int) }}</td>
-                    <td>{{ count }}</td>
+                    <td>{{ row[0] }}</td>
+                    <td>
+                        {{ "%.1f"|format(row[1]) }}
+                        <span class="star-rating">{{ "⭐" * (row[1]|round(0)|int) }}</span>
+                    </td>
+                    <td>{{ row[2] }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -28,25 +31,87 @@
     {% endif %}
 </div>
 
-<!-- ===== COUNT BY STATUS ===== -->
+<!-- ===== FEEDBACK BY STATUS (with bar chart) ===== -->
 <div class="card">
     <h2>Feedback by Status</h2>
     {% if status_counts %}
+        {% for row in status_counts %}
+            {% set st = row[0] %}
+            {% set count = row[1] %}
+            <div style="margin-bottom: 0.75rem;">
+                <div style="display:flex; justify-content:space-between; margin-bottom:0.25rem;">
+                    <span class="badge badge-{{ st|lower|replace(' ', '-') }}">{{ st }}</span>
+                    <strong>{{ count }}</strong>
+                </div>
+                <div style="background:#eee; border-radius:4px; height:18px; overflow:hidden;">
+                    <div style="width:{{ (count / max_status * 100)|round(1) }}%; background:var(--primary-color); height:100%; border-radius:4px;"></div>
+                </div>
+            </div>
+        {% endfor %}
+    {% else %}
+        <p class="empty-state">No feedback data available.</p>
+    {% endif %}
+</div>
+
+<!-- ===== MONTHLY TREND (with bar chart) ===== -->
+<div class="card">
+    <h2>Monthly Trend</h2>
+    {% if monthly_trend %}
+        {% set max_m = max_monthly %}
         <table>
             <thead>
-                <tr><th>Status</th><th>Count</th></tr>
+                <tr><th>Month</th><th>Count</th><th>Avg Rating</th></tr>
             </thead>
             <tbody>
-                {% for st, count in status_counts %}
+                {% for row in monthly_trend %}
                 <tr>
-                    <td><span class="badge badge-{{ st|lower|replace(' ', '-') }}">{{ st }}</span></td>
-                    <td>{{ count }}</td>
+                    <td>{{ row[0] }}</td>
+                    <td style="min-width:200px;">
+                        <div style="display:flex; align-items:center; gap:0.5rem;">
+                            <div style="background:#eee; border-radius:4px; height:16px; flex:1; overflow:hidden; min-width:80px;">
+                                <div style="width:{{ (row[1] / max_m * 100)|round(1) }}%; background:#2ecc71; height:100%; border-radius:4px;"></div>
+                            </div>
+                            <span>{{ row[1] }}</span>
+                        </div>
+                    </td>
+                    <td>{{ "%.1f"|format(row[2]) }} {{ "⭐" * (row[2]|round(0)|int) if row[2] >= 1 else "" }}</td>
                 </tr>
                 {% endfor %}
             </tbody>
         </table>
     {% else %}
-        <p class="empty-state">No feedback data available.</p>
+        <p class="empty-state">No monthly data available.</p>
+    {% endif %}
+</div>
+
+<!-- ===== WEEKLY TREND (with bar chart) ===== -->
+<div class="card">
+    <h2>Weekly Trend</h2>
+    {% if weekly_trend %}
+        {% set max_w = max_weekly %}
+        <table>
+            <thead>
+                <tr><th>Week</th><th>Count</th><th>Avg Rating</th></tr>
+            </thead>
+            <tbody>
+                {% for row in weekly_trend %}
+                <tr>
+                    <td>{{ row[0] }}</td>
+                    <td style="min-width:200px;">
+                        <div style="display:flex; align-items:center; gap:0.5rem;">
+                            <div style="background:#eee; border-radius:4px; height:16px; flex:1; overflow:hidden; min-width:80px;">
+                                <div style="width:{{ (row[1] / max_w * 100)|round(1) }}%; background:#f39c12; height:100%; border-radius:4px;"></div>
+                            </div>
+                            <span>{{ row[1] }}</span>
+                        </div>
+                    </td>
+                    <td>{{ "%.1f"|format(row[2]) }} {{ "⭐" * (row[2]|round(0)|int) if row[2] >= 1 else "" }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="empty-state">No weekly data available.</p>
     {% endif %}
 </div>
 

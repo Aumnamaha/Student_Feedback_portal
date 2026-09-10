@@ -120,15 +120,94 @@ def update_status(fb_id):
 
 
 # ------------------------------------------------------------------ #
-#  PLACEHOLDER: REPORTS                                                #
+#  REPORTS — aggregate stats (no joins → no PII exposure possible)     #
 # ------------------------------------------------------------------ #
+
+from sqlalchemy import func
 
 @admin_bp.route('/reports')
 @login_required
 @admin_required
 def reports():
-    """Summary reports — to be implemented."""
+    """Summary reports: avg rating per category, count by status,
+    and trend over time (weekly/monthly).  Uses only the ``feedback``
+    table — no joins to ``users``, so student PII is impossible to leak."""
+
+    # --- aggregate helpers (pure SQL aggregates on feedback table) ---
+
+    # Average rating per category + total count
+    cat_stats = (
+        db.session.query(
+            Feedback.category,
+            func.round(func.avg(Feedback.rating), 2).label("avg_rating"),
+            func.count(Feedback.id).label("count"),
+        )
+        .group_by(Feedback.category)
+        .order_by(func.count(Feedback.id).desc())
+        .all()
+    )
+
+    # Feedback count by status
+    status_counts = (
+        db.session.query(
+            Feedback.status,
+            func.count(Feedback.id).label("count"),
+        )
+        .group_by(Feedback.status)
+        .order_by(
+            db.case(
+                (Feedback.status == "Pending", 1),
+                (Feedback.status == "In Progress", 2),
+                (Feedback.status == "Resolved", 3),
+            )
+        )
+        .all()
+    )
+
+    # Trend over time — weekly buckets for the last N weeks
+    from datetime import date, timedelta
+
+    today = date.today()
+    weeks_back = 12
+    week_start = today - timedelta(weeks=weeks_back)
+
+    # Use strftime on created_at to group by ISO week
+    # SQLite-compatible: use substr(created_at, 1, 7) for YYYY-MM month grouping
+    monthly_trend = (
+        db.session.query(
+            func.substr(Feedback.created_at, 1, 7).label("month"),
+            func.count(Feedback.id).label("count"),
+            func.round(func.avg(Feedback.rating), 2).label("avg_rating"),
+        )
+        .group_by(func.substr(Feedback.created_at, 1, 7))
+        .order_by(func.substr(Feedback.created_at, 1, 7))
+        .all()
+    )
+
+    # Weekly trend (ISO week number + year)
+    weekly_trend = (
+        db.session.query(
+            func.strftime("%Y-W%w", Feedback.created_at).label("week"),
+            func.count(Feedback.id).label("count"),
+            func.round(func.avg(Feedback.rating), 2).label("avg_rating"),
+        )
+        .group_by(func.strftime("%Y-W%w", Feedback.created_at))
+        .order_by(func.strftime("%Y-W%w", Feedback.created_at))
+        .all()
+    )
+
+    # Compute max values for CSS bar widths
+    max_monthly = max((row[1] for row in monthly_trend), default=1) or 1
+    max_weekly = max((row[1] for row in weekly_trend), default=1) or 1
+    max_status = max((row[1] for row in status_counts), default=1) or 1
+
     return render_template(
         'reports.html',
-        _placeholder=True,
+        category_stats=cat_stats,
+        status_counts=status_counts,
+        monthly_trend=monthly_trend,
+        weekly_trend=weekly_trend,
+        max_monthly=max_monthly,
+        max_weekly=max_weekly,
+        max_status=max_status,
     )
