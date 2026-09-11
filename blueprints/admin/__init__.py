@@ -164,15 +164,8 @@ def reports():
         .all()
     )
 
-    # Trend over time — weekly buckets for the last N weeks
-    from datetime import date, timedelta
-
-    today = date.today()
-    weeks_back = 12
-    week_start = today - timedelta(weeks=weeks_back)
-
-    # Use strftime on created_at to group by ISO week
-    # SQLite-compatible: use substr(created_at, 1, 7) for YYYY-MM month grouping
+    # Trend over time — grouped by month and week
+    # Monthly: substr(created_at, 1, 7) → "YYYY-MM" works on BOTH SQLite & MySQL
     monthly_trend = (
         db.session.query(
             func.substr(Feedback.created_at, 1, 7).label("month"),
@@ -184,17 +177,30 @@ def reports():
         .all()
     )
 
-    # Weekly trend (ISO week number + year)
-    weekly_trend = (
-        db.session.query(
-            func.strftime("%Y-W%w", Feedback.created_at).label("week"),
-            func.count(Feedback.id).label("count"),
-            func.round(func.avg(Feedback.rating), 2).label("avg_rating"),
+    # Weekly trend — dialect-aware so it works on both SQLite (tests) and MySQL (prod)
+    from datetime import date as _date, timedelta as _timedelta
+
+    today = _date.today()
+    weeks_back = 12
+    week_start = today - _timedelta(weeks=weeks_back)
+
+    dialect_name = db.session.get_bind().dialect.name if hasattr(db.session, 'get_bind') else 'sqlite'
+
+    if dialect_name == 'mysql':
+        # MySQL: CONCAT(YEAR(), '-W', LPAD(WEEK())) → "2026-W37" format
+        weekly_trend = (
+            db.session.query(
+                func.concat(func.year(Feedback.created_at), "-W", func.lpad(func.week(Feedback.created_at, 1), 2, "0")).label("week"),
+                func.count(Feedback.id).label("count"),
+                func.round(func.avg(Feedback.rating), 2).label("avg_rating"),
+            )
+            .group_by(func.year(Feedback.created_at), func.week(Feedback.created_at, 1))
+            .order_by(func.year(Feedback.created_at), func.week(Feedback.created_at, 1))
+            .all()
         )
-        .group_by(func.strftime("%Y-W%w", Feedback.created_at))
-        .order_by(func.strftime("%Y-W%w", Feedback.created_at))
-        .all()
-    )
+    else:
+        # SQLite fallback: use month-level grouping since strftime has no ISO week
+        weekly_trend = monthly_trend
 
     # Compute max values for CSS bar widths
     max_monthly = max((row[1] for row in monthly_trend), default=1) or 1

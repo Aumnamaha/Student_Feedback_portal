@@ -13,6 +13,12 @@
         <div class="nav-links">
             {% if session.user_id %}
                 <span>Welcome, {{ session.name }}</span>
+                {% if session.role == 'admin' %}
+                    <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
+                    <a href="{{ url_for('admin.reports') }}">Reports</a>
+                {% else %}
+                    <a href="{{ url_for('student.dashboard') }}">My Feedback</a>
+                {% endif %}
                 <form action="{{ url_for('auth.logout') }}" method="post" style="display:inline">
                     <button type="submit" class="btn-logout">Logout</button>
                 </form>

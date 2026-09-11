@@ -137,3 +137,34 @@ th { background: #f8f9fa; font-weight: 600; white-space: nowrap; }
     .detail-grid { grid-template-columns: 1fr; gap: 0.4rem; }
     th, td { padding: 0.5rem 0.4rem; font-size: 0.85rem; }
 }
+
+/* --- Mobile nav wrapping --- */
+.nav-links {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem 0.75rem;
+    justify-content: center;
+    align-items: center;
+    font-size: 0.85rem;
+}
+.nav-links a {
+    margin-left: 0;
+    white-space: nowrap;
+}
+
+/* --- Mobile table scroll wrapper --- */
+table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    width: 100%;
+}
+
+/* --- Report bar responsive --- */
+.bar-cell {
+    min-width: 120px !important;
+}
+@media (max-width: 480px) {
+    .card h2 { font-size: 1.1rem; }
+    .navbar .brand { font-size: 1.1rem; }
+}

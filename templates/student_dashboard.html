@@ -24,7 +24,7 @@
                 <select id="rating" name="rating" required>
                     <option value="">— Rate —</option>
                     {% for r in [1, 2, 3, 4, 5] %}
-                        <option value="{{ r }}" {{ 'selected' if submitted.rating|string() == r|string() }}>{{ "⭐" * r }}</option>
+                        <option value="{{ r }}" {{ 'selected' if submitted.rating|string() == (r|string) }}>{{ "⭐" * r }}</option>
                     {% endfor %}
                 </select>
             </div>
