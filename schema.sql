@@ -24,23 +24,50 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 -- -----------------------------------------------------------
+-- faculty
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS faculty (
+    id             INT AUTO_INCREMENT PRIMARY KEY,
+    name           VARCHAR(100)  NOT NULL,
+    email          VARCHAR(100)  NOT NULL UNIQUE,
+    faculty_id     VARCHAR(50)   NOT NULL UNIQUE,
+    department     VARCHAR(100)  NOT NULL,
+    subject_taught VARCHAR(200)  NOT NULL,
+    password_hash  VARCHAR(255)  NOT NULL,
+    role           ENUM('faculty')
+                  NOT NULL DEFAULT 'faculty',
+    created_at     TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+-- -----------------------------------------------------------
 -- feedback
 -- -----------------------------------------------------------
 CREATE TABLE IF NOT EXISTS feedback (
-    id            INT AUTO_INCREMENT PRIMARY KEY,
-    student_id    INT           NOT NULL,
-    category      ENUM('Food', 'Faculty', 'Infrastructure',
-                       'Events', 'Other')
-                  NOT NULL,
-    rating        TINYINT       NOT NULL  CHECK (rating BETWEEN 1 AND 5),
-    comment       TEXT          NOT NULL,
-    is_anonymous  BOOLEAN       NOT NULL DEFAULT FALSE,
-    status        ENUM('Pending', 'In Progress', 'Resolved')
-                  NOT NULL DEFAULT 'Pending',
-    created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
-                        ON UPDATE CURRENT_TIMESTAMP,
+    id                    INT AUTO_INCREMENT PRIMARY KEY,
+    student_id            INT           NOT NULL,
+    category              ENUM('Food', 'Faculty', 'Infrastructure',
+                               'Events', 'Other')
+                          NOT NULL,
+    rating                TINYINT       NOT NULL  CHECK (rating BETWEEN 1 AND 5),
+    comment               TEXT          NOT NULL,
+    is_anonymous          BOOLEAN       NOT NULL DEFAULT FALSE,
+    status                ENUM('Pending', 'In Progress', 'Resolved',
+                               'Verified/Closed', 'Verification Failed')
+                          NOT NULL DEFAULT 'Pending',
+    department            VARCHAR(100)  NULL,
+    subject               VARCHAR(200)  NULL,
+    semester_year         VARCHAR(20)   NULL,
+    resolved_by_faculty_id INT          NULL,
+    review_deadline       TIMESTAMP     NULL,
+    escalation_deadline   TIMESTAMP     NULL,
+    failed_verification_count TINYINT  NOT NULL DEFAULT 0,
+    created_at            TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at            TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP
+                            ON UPDATE CURRENT_TIMESTAMP,
 
     CONSTRAINT fk_feedback_student
-        FOREIGN KEY (student_id) REFERENCES users (id)
+        FOREIGN KEY (student_id) REFERENCES users (id),
+
+    CONSTRAINT fk_feedback_faculty
+        FOREIGN KEY (resolved_by_faculty_id) REFERENCES faculty (id)
 );

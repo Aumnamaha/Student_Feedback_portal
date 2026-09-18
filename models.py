@@ -66,6 +66,41 @@ class User(db.Model):
         return check_password_hash(self.password_hash, raw_password)
 
 
+class Faculty(db.Model):
+    """Faculty accounts — admin-seeded only (no self-registration)."""
+
+    __tablename__ = "faculty"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(100), unique=True, nullable=False)
+    faculty_id = db.Column(db.String(50), unique=True, nullable=False)
+    department = db.Column(db.String(100), nullable=False)
+    subject_taught = db.Column(db.String(200), nullable=False)
+    password_hash = db.Column(db.String(255), nullable=False)
+    role = db.Column(
+        db.Enum("faculty"),
+        nullable=False,
+        default="faculty",
+    )
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+    feedback_resolved = db.relationship(
+        "Feedback", backref="resolver", lazy="dynamic",
+        foreign_keys="Feedback.resolved_by_faculty_id"
+    )
+
+    # --- password helpers (werkzeug) ---
+
+    def set_password(self, raw_password: str) -> None:
+        """Hash *raw_password* and store it in ``password_hash``."""
+        self.password_hash = generate_password_hash(raw_password)
+
+    def check_password(self, raw_password: str) -> bool:
+        """Return ``True`` if *raw_password* matches the stored hash."""
+        return check_password_hash(self.password_hash, raw_password)
+
+
 class Feedback(db.Model):
     """Individual feedback entries submitted by students."""
 
@@ -83,9 +118,21 @@ class Feedback(db.Model):
     comment = db.Column(db.Text, nullable=False)
     is_anonymous = db.Column(db.Boolean, default=False, nullable=False)
     status = db.Column(
-        db.Enum("Pending", "In Progress", "Resolved"),
+        db.Enum("Pending", "In Progress", "Resolved",
+                "Verified/Closed", "Verification Failed"),
         default="Pending",
         nullable=False,
+    )
+    department = db.Column(db.String(100), nullable=True)
+    subject = db.Column(db.String(200), nullable=True)
+    semester_year = db.Column(db.String(20), nullable=True)
+    resolved_by_faculty_id = db.Column(
+        db.Integer, db.ForeignKey("faculty.id"), nullable=True
+    )
+    review_deadline = db.Column(db.DateTime, nullable=True)
+    escalation_deadline = db.Column(db.DateTime, nullable=True)
+    failed_verification_count = db.Column(
+        TinyInt(), nullable=False, default=0
     )
     created_at = db.Column(db.DateTime, server_default=db.func.now())
     updated_at = db.Column(
@@ -94,6 +141,31 @@ class Feedback(db.Model):
 
     def __repr__(self):
         return f"<Feedback {self.id} | {self.category}>"
+
+    # ------------------------------------------------------------------
+    #  VERIFICATION LIFECYCLE HELPERS
+    # ------------------------------------------------------------------
+
+    def verify_success(self) -> None:
+        """Transition from 'Resolved' → 'Verified/Closed'."""
+        if self.status != "Resolved":
+            raise ValueError(
+                f"Cannot verify feedback with status '{self.status}'. "
+                "Must be 'Resolved'."
+            )
+        self.status = "Verified/Closed"
+
+    def verify_failure(self) -> None:
+        """Transition from 'Resolved' → 'In Progress', increment counter."""
+        if self.status != "Resolved":
+            raise ValueError(
+                f"Cannot fail-verify feedback with status '{self.status}'. "
+                "Must be 'Resolved'."
+            )
+        self.failed_verification_count = (
+            (self.failed_verification_count or 0) + 1
+        )
+        self.status = "In Progress"
 
     # ------------------------------------------------------------------
     #  ADMIN-FACING SERIALIZATION — enforces anonymous PII protection
@@ -197,3 +269,10 @@ def current_user():
     if 'user_id' not in _flask_session:
         return None
     return db.session.get(User, _flask_session['user_id'])
+
+
+def current_faculty():
+    """Return the currently logged-in Faculty object, or ``None``."""
+    if 'faculty_id' not in _flask_session:
+        return None
+    return db.session.get(Faculty, _flask_session['faculty_id'])

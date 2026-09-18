@@ -1,4 +1,4 @@
-"""Authentication routes: /register, /login, /logout."""
+"""Authentication routes: /register, /login, logout."""
 
 from functools import wraps
 
@@ -79,7 +79,7 @@ def register():
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """Login page."""
+    """Login page — supports student, admin, and faculty roles."""
 
     if request.method == 'POST':
         email = request.form.get('email', '').strip().lower()
@@ -89,22 +89,43 @@ def login():
             flash('Email and password are required.', 'error')
             return render_template('login.html')
 
+        # --- try student/admin (User) first ---
         user = User.query.filter_by(email=email).first()
+        role_type = None
 
-        if user is None or not user.check_password(password):
+        if user is not None and user.check_password(password):
+            session['user_id'] = user.id
+            session['role'] = user.role
+            session['name'] = user.name
+            role_type = 'user'
+
+        # --- try faculty if User didn't match ---
+        if role_type is None:
+            from models import Faculty
+            faculty = Faculty.query.filter_by(email=email).first()
+            if faculty is not None and faculty.check_password(password):
+                session['faculty_id'] = faculty.id
+                session['role'] = 'faculty'
+                session['name'] = faculty.name
+                role_type = 'faculty'
+
+        # --- invalid credentials ---
+        if role_type is None:
             flash('Invalid email or password.', 'error')
             return render_template('login.html')
 
-        # --- set session ---
-        session['user_id'] = user.id
-        session['role'] = user.role
-        session['name'] = user.name
-
-        flash(f'Welcome back, {user.name}!', 'success')
+        flash(f'Welcome back, {session["name"]}!', 'success')
 
         # redirect based on role
-        if user.role == 'admin':
+        if session['role'] == 'admin':
             return redirect(url_for('admin.dashboard'))
+        if session['role'] == 'faculty':
+            # Placeholder — faculty dashboard route not yet implemented
+            flash(
+                'Faculty dashboard is under construction.',
+                'warning',
+            )
+            return redirect(url_for('auth.login'))
         return redirect(url_for('student.dashboard'))
 
     return render_template('login.html')
@@ -130,7 +151,7 @@ def login_required(f):
     """Decorator that redirects unauthenticated users to /login."""
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'user_id' not in session:
+        if 'user_id' not in session and 'faculty_id' not in session:
             flash('Please log in to access this page.', 'warning')
             return redirect(url_for('auth.login'))
         return f(*args, **kwargs)
@@ -148,5 +169,16 @@ def admin_required(f):
     return decorated
 
 
+def faculty_required(f):
+    """Decorator that requires the user to have the faculty role."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'faculty_id' not in session or session.get('role') != 'faculty':
+            flash('Faculty access required.', 'error')
+            return redirect(url_for('auth.login'))
+        return f(*args, **kwargs)
+    return decorated
+
+
 # Expose decorators for import by other blueprints
-__all__ = ['login_required', 'admin_required']
+__all__ = ['login_required', 'admin_required', 'faculty_required']
