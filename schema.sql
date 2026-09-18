@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS feedback (
     comment               TEXT          NOT NULL,
     is_anonymous          BOOLEAN       NOT NULL DEFAULT FALSE,
     status                ENUM('Pending', 'In Progress', 'Resolved',
-                               'Verified/Closed', 'Verification Failed')
+                               'Pinned', 'Verified/Closed', 'Verification Failed')
                           NOT NULL DEFAULT 'Pending',
     department            VARCHAR(100)  NULL,
     subject               VARCHAR(200)  NULL,
@@ -71,3 +71,24 @@ CREATE TABLE IF NOT EXISTS feedback (
     CONSTRAINT fk_feedback_faculty
         FOREIGN KEY (resolved_by_faculty_id) REFERENCES faculty (id)
 );
+
+-- -----------------------------------------------------------
+-- comment (threaded comments on feedback items)
+-- -----------------------------------------------------------
+CREATE TABLE IF NOT EXISTS comment (
+    id            INT AUTO_INCREMENT PRIMARY KEY,
+    feedback_id   INT           NOT NULL,
+    parent_id     INT           NULL,
+    author_type   ENUM('faculty', 'student')
+                  NOT NULL,
+    author_id     INT           NOT NULL,
+    text          TEXT          NOT NULL,
+    created_at    TIMESTAMP     NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_comment_feedback
+        FOREIGN KEY (feedback_id) REFERENCES feedback (id),
+
+    CONSTRAINT fk_comment_parent
+        FOREIGN KEY (parent_id) REFERENCES comment (id)
+);
+

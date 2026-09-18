@@ -1,0 +1,105 @@
+{% extends "base.html" %}
+{% block title %}Faculty Dashboard — Student Feedback{% endblock %}
+
+{% block head %}
+<style>
+    .stats-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; }
+    .stat-card { flex: 1; background: #fff; border-radius: 8px; padding: 1rem; box-shadow: 0 2px 6px rgba(0,0,0,.07); text-align: center; }
+    .stat-card .number { font-size: 2rem; font-weight: 700; color: var(--primary-color); }
+    .stat-card .label { font-size: 0.85rem; color: #666; margin-top: 0.25rem; }
+    .stat-card.warning .number { color: var(--warning); }
+    .stat-card.danger .number { color: var(--danger); }
+
+    /* Priority highlighting */
+    tr.subject-match { background: #f0fdf4 !important; border-left: 3px solid #22c55e; }
+    tr.escalated-row { background: #fef2f2 !important; border-left: 3px solid #ef4444; }
+
+    .countdown-badge { display: inline-block; padding: 0.15rem 0.4rem; border-radius: 3px; font-size: 0.75rem; font-weight: 600; min-width: 80px; text-align: center; }
+    .countdown-active { background: #dbeafe; color: #1e40af; }
+    .countdown-warning { background: #fef3c7; color: #92400e; }
+    .countdown-overdue { background: #fee2e2; color: #b91c1c; animation: pulse 1.5s infinite; }
+    .countdown-resolved { background: #d1fae5; color: #065f46; }
+
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.7; } }
+
+    .subject-tag { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 2px; font-size: 0.7rem; margin-left: 0.4rem; background: #dcfce7; color: #166534; }
+    .escalation-tag { display: inline-block; padding: 0.1rem 0.35rem; border-radius: 2px; font-size: 0.7rem; margin-left: 0.4rem; background: #fee2e2; color: #b91c1c; }
+
+    .empty-state { text-align: center; padding: 3rem; color: #888; font-style: italic; }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Welcome, {{ faculty.name }}</h1>
+<p class="subtitle">{{ faculty.department }} — {{ faculty.subject_taught }}</p>
+
+<!-- ===== STATS ROW ===== -->
+<div class="stats-row">
+    <div class="stat-card">
+        <div class="number">{{ feedback_list|length }}</div>
+        <div class="label">Total Feedback</div>
+    </div>
+    <div class="stat-card warning">
+        <div class="number">{{ pending_count }}</div>
+        <div class="label">Pending Review</div>
+    </div>
+    <div class="stat-card danger">
+        <div class="number">{{ escalated_count }}</div>
+        <div class="label">Escalated</div>
+    </div>
+</div>
+
+<!-- ===== FEEDBACK TABLE ===== -->
+<div class="card">
+    <h2>Your Department Feedback</h2>
+    {% if feedback_list %}
+        <table>
+            <thead>
+                <tr>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Rating</th>
+                    <th>Status</th>
+                    <th>Subject Match</th>
+                    <th>Comment</th>
+                    <th>Countdown</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fb in feedback_list %}
+                <tr class="{% if fb.subject_match %}subject-match{% endif %}{% if fb.is_escalated %} escalated-row{% endif %}" data-fb-id="{{ fb.id }}">
+                    <td>{{ fb.created_at.strftime('%d %b') }}</td>
+                    <td>{{ fb.category }}{% if fb.department %}<br><small style="color:#666">{{ fb.department }}</small>{% endif %}</td>
+                    <td>{{ "⭐" * fb.rating }}</td>
+                    <td>
+                        <span class="badge badge-{{ fb.status|lower|replace(' ', '-') }}">{{ fb.status }}</span>
+                        {% if fb.subject_match %}<span class="subject-tag">MATCH</span>{% endif %}
+                        {% if fb.is_escalated %}<span class="escalation-tag">ESCALATED</span>{% endif %}
+                    </td>
+                    <td>{{ "Yes" if fb.subject_match else "—" }}</td>
+                    <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ fb.comment }}">{{ fb.comment[:60] }}{% if fb.comment|length > 60 %}...{% endif %}</td>
+                    <td>
+                        <span id="countdown-{{ fb.id }}" class="countdown-badge countdown-resolved">—</span>
+                    </td>
+                    <td>
+                        {% if fb.status not in ('Verified/Closed', 'Verification Failed') %}
+                            <a href="{{ url_for('faculty.feedback_detail', fb_id=fb.id) }}" class="btn-primary" style="padding:0.3rem 0.75rem;font-size:0.85rem">Review</a>
+                        {% else %}
+                            <span style="color:#666;font-size:0.85rem">Closed</span>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="empty-state">No feedback to review in your department yet.</p>
+    {% endif %}
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/countdown.js') }}"></script>
+{% endblock %}

@@ -11,11 +11,13 @@
     <nav class="navbar">
         <a href="/" class="brand">Student Feedback</a>
         <div class="nav-links">
-            {% if session.user_id %}
+            {% if session.user_id or session.faculty_id %}
                 <span>Welcome, {{ session.name }}</span>
                 {% if session.role == 'admin' %}
                     <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
                     <a href="{{ url_for('admin.reports') }}">Reports</a>
+                {% elif session.role == 'faculty' %}
+                    <a href="{{ url_for('faculty.dashboard') }}">My Feedback</a>
                 {% else %}
                     <a href="{{ url_for('student.dashboard') }}">My Feedback</a>
                 {% endif %}

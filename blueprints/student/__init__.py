@@ -1,5 +1,7 @@
 """Student dashboard blueprint — submit feedback and view history."""
 
+from datetime import datetime
+
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 
 from models import Feedback, db
@@ -19,6 +21,9 @@ def dashboard():
         rating_str = request.form.get('rating', '').strip()
         comment = request.form.get('comment', '').strip()
         is_anonymous = request.form.get('anonymous') == 'on'
+        department = request.form.get('department', '').strip() or None
+        subject = request.form.get('subject', '').strip() or None
+        semester_year = request.form.get('semester_year', '').strip() or None
 
         # --- validation ---
         if not category:
@@ -37,13 +42,28 @@ def dashboard():
             flash('Please write a comment.', 'error')
             return _render_dashboard(request.form)
 
-        # --- create feedback record ---
+        # Department is required for Faculty & Food categories
+        if category in ('Faculty', 'Food') and not department:
+            flash('Department is required for this category.', 'error')
+            return _render_dashboard(request.form)
+
+        # Subject is required specifically for Faculty category
+        if category == 'Faculty' and not subject:
+            flash('Subject is required for Faculty feedback.', 'error')
+            return _render_dashboard(request.form)
+
+        # --- create feedback record with review_deadline = now + 24h ---
+        from datetime import timedelta as _td, timezone as _tz
         fb = Feedback(
             student_id=session['user_id'],
             category=category,
             rating=rating,
             comment=comment,
             is_anonymous=is_anonymous,
+            department=department,
+            subject=subject,
+            semester_year=semester_year,
+            review_deadline=datetime.now(_tz.utc) + _td(hours=24),
         )
         db.session.add(fb)
         db.session.commit()

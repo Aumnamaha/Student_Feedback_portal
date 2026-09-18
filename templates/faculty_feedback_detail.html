@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+{% block title %}Feedback #{{ feedback.id }} — Review{% endblock %}
+
+{% block head %}
+<style>
+    .detail-header { display: flex; gap: 1rem; align-items: flex-end; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .detail-grid { list-style: none; display: grid; grid-template-columns: auto 1fr; gap: 0.75rem 2rem; font-size: 0.95rem; }
+    .detail-grid dt { font-weight: 600; color: #555; white-space: nowrap; padding-top: 0.3rem; }
+    .detail-grid dd { margin: 0; }
+
+    /* Countdown */
+    .countdown-display { text-align: center; padding: 1rem; border-radius: 8px; background: #f8fafc; border: 2px solid #e2e8f0; margin-bottom: 1.5rem; }
+    .countdown-display.overdue { background: #fef2f2; border-color: #ef4444; }
+    .countdown-display.warning { background: #fffbeb; border-color: #f59e0b; }
+    .countdown-timer { font-size: 1.75rem; font-weight: 700; font-family: monospace; color: var(--primary-color); }
+    .countdown-display.overdue .countdown-timer { color: #ef4444; }
+    .countdown-label { font-size: 0.8rem; color: #666; margin-top: 0.25rem; }
+
+    /* Comment thread */
+    .comment-thread { margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee; }
+    .comment-item { padding: 0.75rem; margin-bottom: 0.5rem; background: #fafafa; border-radius: 6px; border-left: 3px solid var(--primary-color); }
+    .comment-meta { font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; }
+
+    /* Comment form */
+    .comment-form { display: flex; gap: 0.5rem; margin-top: 1rem; }
+    .comment-form textarea { flex: 1; padding: 0.6rem; border: 1px solid #ccc; border-radius: 4px; font-size: 0.9rem; resize: vertical; min-height: 60px; font-family: inherit; }
+
+    /* Status transition buttons */
+    .status-actions { display: flex; gap: 0.5rem; margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid #eee; flex-wrap: wrap; }
+    .btn-action { padding: 0.5rem 1rem; border: none; border-radius: 4px; font-size: 0.9rem; cursor: pointer; color: #fff; }
+    .btn-in-progress { background: var(--primary-color); }
+    .btn-resolved { background: var(--success); }
+    .btn-verify-success { background: #7c3aed; }
+    .btn-verify-fail { background: var(--danger); opacity: 0.6; cursor: not-allowed; }
+
+    /* Subject match highlight */
+    .subject-match-box { background: #f0fdf4; border: 1px solid #86efac; padding: 0.5rem 1rem; border-radius: 6px; display: inline-block; margin-bottom: 1rem; font-size: 0.9rem; color: #166534; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="detail-header">
+        <h2 style="margin:0">Feedback #{{ feedback.id }}</h2>
+        {% if feedback.subject_match %}
+            <span class="subject-match-box">🎯 Subject Match — {{ feedback.subject }}</span>
+        {% endif %}
+    </div>
+
+    <!-- Countdown -->
+    <div id="countdown-display" class="countdown-display{% if feedback.is_escalated %} overdue{% elif feedback.failed_verification_count > 0 %} warning{% endif %}" data-fb-id="{{ feedback.id }}">
+        <div id="countdown-timer-{{ feedback.id }}" class="countdown-timer">Loading...</div>
+        <div class="countdown-label" id="countdown-label-{{ feedback.id }}"></div>
+    </div>
+
+    <!-- Feedback details -->
+    <dl class="detail-grid">
+        <dt>Category</dt><dd>{{ feedback.category }}</dd>
+        <dt>Rating</dt><dd>{{ "⭐" * feedback.rating }}</dd>
+        <dt>Status</dt><dd><span class="badge badge-{{ feedback.status|lower|replace(' ', '-') }}">{{ feedback.status }}</span></dd>
+        <dt>Department</dt><dd>{{ feedback.department or '—' }}</dd>
+        {% if feedback.subject %}<dt>Subject</dt><dd>{{ feedback.subject }}</dd>{% endif %}
+        {% if feedback.semester_year %}<dt>Semester/Year</dt><dd>{{ feedback.semester_year }}</dd>{% endif %}
+        <dt>Student</dt><dd>{{ feedback.student_class }} {{ feedback.student_year }}</dd>
+        <dt>Submitted</dt><dd>{{ feedback.created_at.strftime('%d %b %Y, %H:%M') if feedback.created_at else '—' }}</dd>
+        {% if feedback.review_deadline %}<dt>Review Deadline</dt><dd>{{ feedback.review_deadline.strftime('%d %b %Y, %H:%M') }}</dd>{% endif %}
+        {% if feedback.escalation_deadline %}<dt>Escalation Deadline</dt><dd>{{ feedback.escalation_deadline.strftime('%d %b %Y, %H:%M') }}</dd>{% endif %}
+        <dt>Comment</dt><dd style="white-space:pre-wrap">{{ feedback.comment }}</dd>
+    </dl>
+
+    <!-- Status transition buttons -->
+    {% if feedback.status in ('Pending', 'In Progress', 'Resolved') %}
+    <div class="status-actions">
+        {% if feedback.status == 'Pending' %}
+            <form method="POST" action="{{ url_for('faculty.update_status', fb_id=feedback.id) }}" style="display:inline">
+                <button type="submit" name="status" value="In Progress" class="btn-action btn-in-progress">Mark In Progress</button>
+            </form>
+        {% elif feedback.status == 'In Progress' %}
+            <form method="POST" action="{{ url_for('faculty.update_status', fb_id=feedback.id) }}" style="display:inline">
+                <button type="submit" name="status" value="Resolved" class="btn-action btn-resolved">Mark Resolved</button>
+            </form>
+        {% elif feedback.status == 'Resolved' %}
+            <!-- Verification section -->
+            <span style="font-weight:600;color:#555;margin-right:0.5rem;">Verify Resolution:</span>
+            <form method="POST" action="{{ url_for('faculty.verify_feedback', fb_id=feedback.id) }}" style="display:inline">
+                <button type="submit" name="action" value="success" class="btn-action btn-verify-success">✓ Verified/Closed</button>
+            </form>
+            <form method="POST" action="{{ url_for('faculty.verify_feedback', fb_id=feedback.id) }}" style="display:inline">
+                <button type="submit" name="action" value="failure" class="btn-action btn-verify-fail">✗ Verification Failed</button>
+            </form>
+        {% endif %}
+    </div>
+    {% endif %}
+
+    <!-- Comment thread -->
+    <div class="comment-thread">
+        <h3>Discussion Thread ({{ comments|length }})</h3>
+
+        {% for c in comments %}
+        <div class="comment-item">
+            <div class="comment-meta">Faculty · {{ c.created_at.strftime('%d %b %Y, %H:%M') if c.created_at else '—' }}</div>
+            <p style="white-space:pre-wrap;margin-top:0.25rem">{{ c.text }}</p>
+        </div>
+        {% endfor %}
+
+        {% if can_comment and feedback.status not in ('Verified/Closed', 'Verification Failed') %}
+        <form class="comment-form" id="comment-form-{{ feedback.id }}" onsubmit="return submitComment(event, {{ feedback.id }})">
+            <textarea name="text" placeholder="Add a comment to this feedback..." required></textarea>
+            <button type="submit" class="btn-primary" style="align-self:flex-end">Post</button>
+        </form>
+        {% endif %}
+
+        {% if feedback.status in ('Verified/Closed', 'Verification Failed') %}
+            <p style="color:#888;font-style:italic;margin-top:0.5rem;">This feedback is closed — comments are disabled.</p>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/countdown.js') }}"></script>
+<script src="{{ url_for('static', filename='js/comments.js') }}"></script>
+<script>
+    // Start countdown for this detail page
+    document.addEventListener('DOMContentLoaded', function() {
+        startCountdown({{ feedback.id }}, 'countdown-timer-{{ feedback.id }}');
+    });
+
+    function submitComment(e, fbId) {
+        e.preventDefault();
+        const form = document.getElementById(`comment-form-${fbId}`);
+        const textarea = form.querySelector('textarea');
+        const text = textarea.value.trim();
+        if (!text) return false;
+
+        fetch(`/faculty/feedback/${fbId}/comment`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({text: text})
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.error) { alert(data.error); return; }
+            // Append comment to thread
+            const thread = document.querySelector('.comment-thread');
+            const div = document.createElement('div');
+            div.className = 'comment-item';
+            const date = new Date(data.created_at).toLocaleString();
+            div.innerHTML = `<div class="comment-meta">Faculty · ${date}</div><p style="white-space:pre-wrap;margin-top:0.25rem">${escapeHtml(data.text)}</p>`;
+            thread.appendChild(div);
+            textarea.value = '';
+        })
+        .catch(err => console.error('Comment failed:', err));
+
+        return false;
+    }
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = text;
+        return div.innerHTML;
+    }
+</script>
+{% endblock %}

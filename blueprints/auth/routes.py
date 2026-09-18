@@ -120,12 +120,7 @@ def login():
         if session['role'] == 'admin':
             return redirect(url_for('admin.dashboard'))
         if session['role'] == 'faculty':
-            # Placeholder — faculty dashboard route not yet implemented
-            flash(
-                'Faculty dashboard is under construction.',
-                'warning',
-            )
-            return redirect(url_for('auth.login'))
+            return redirect(url_for('faculty.dashboard'))
         return redirect(url_for('student.dashboard'))
 
     return render_template('login.html')

@@ -1,6 +1,6 @@
 """SQLAlchemy data models — mirrors the MySQL schema in schema.sql."""
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from flask_sqlalchemy import SQLAlchemy
@@ -101,8 +101,39 @@ class Faculty(db.Model):
         return check_password_hash(self.password_hash, raw_password)
 
 
+class Comment(db.Model):
+    """Comment thread on a feedback item (Reddit-style).
+
+    Only matching faculty can post; submitting student views read-only.
+    """
+
+    __tablename__ = "comment"
+
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    feedback_id = db.Column(
+        db.Integer, db.ForeignKey("feedback.id"), nullable=False,
+    )
+    parent_id = db.Column(
+        db.Integer, db.ForeignKey("comment.id"), nullable=True,
+    )
+    author_type = db.Column(
+        db.Enum("faculty", "student"), nullable=False,
+    )
+    author_id = db.Column(db.Integer, nullable=False)
+    text = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, server_default=db.func.now())
+
+    # Self-referential reply relationship
+    replies = db.relationship(
+        "Comment", backref=db.backref("parent", remote_side=[id]),
+        lazy="dynamic",
+    )
+
+    def __repr__(self):
+        return f"<Comment {self.id} on Feedback {self.feedback_id}>"
+
+
 class Feedback(db.Model):
-    """Individual feedback entries submitted by students."""
 
     __tablename__ = "feedback"
 
@@ -119,7 +150,7 @@ class Feedback(db.Model):
     is_anonymous = db.Column(db.Boolean, default=False, nullable=False)
     status = db.Column(
         db.Enum("Pending", "In Progress", "Resolved",
-                "Verified/Closed", "Verification Failed"),
+                "Pinned", "Verified/Closed", "Verification Failed"),
         default="Pending",
         nullable=False,
     )
@@ -166,6 +197,90 @@ class Feedback(db.Model):
             (self.failed_verification_count or 0) + 1
         )
         self.status = "In Progress"
+
+    # ------------------------------------------------------------------
+    #  FACULTY-FACING SERIALIZATION — class/year only, no PII
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def faculty_query(session, department, subject=None):
+        """Build a faculty-safe feedback query.
+
+        Returns feedback where:
+          - ``department`` matches the logged-in faculty's department
+          - rating is NOT 5 (5-star never reaches faculty)
+          - if *subject* is provided and non-empty, items whose subject
+            matches are **prioritised** (sorted first) but not filtered out.
+
+        **No joins to users table** — student PII cannot leak.
+        """
+        q = session.query(Feedback).filter(
+            Feedback.department == department,
+            Feedback.rating != 5,
+        )
+        if subject:
+            # Subject match is case-insensitive substring — use as a
+            # prioritisation flag, NOT as a hard filter.  Items that don't
+            # match the faculty's subject_taught are still returned.
+            q = q.order_by(
+                db.desc(Feedback.subject.ilike(f"%{subject}%")),
+                Feedback.created_at.desc(),
+            )
+        else:
+            return q.order_by(
+                db.desc(Feedback.status == "Pinned"),
+                Feedback.created_at.desc(),
+            )
+        return q
+
+    def to_faculty_dict(self, faculty_subject=None) -> dict:
+        """Return a dict safe for faculty-facing views.
+
+        **Anonymization**: only class/year (derived from roll_number)
+        and feedback text are included — never name, email, or roll_number.
+
+        Parameters
+        ----------
+        faculty_subject : str or None
+            The logged-in faculty's subject_taught. Used to flag matches.
+
+        Returns
+        -------
+        dict
+        """
+        # Derive class/year from roll_number for anonymity
+        roll = self.author.roll_number if self.author else None
+        class_label, year_label = _parse_roll_for_class(roll)
+
+        is_subject_match = False
+        if faculty_subject and self.subject:
+            is_subject_match = (
+                faculty_subject.lower() in self.subject.lower()
+            )
+
+        result = {
+            "id": self.id,
+            "category": self.category,
+            "rating": int(self.rating),
+            "comment": self.comment,
+            "status": self.status,
+            "is_anonymous": bool(self.is_anonymous),
+            "department": self.department,
+            "subject": self.subject,
+            "semester_year": self.semester_year,
+            "review_deadline": self.review_deadline,
+            "escalation_deadline": self.escalation_deadline,
+            "failed_verification_count": int(self.failed_verification_count),
+            "created_at": self.created_at,
+            # Anonymized student info
+            "student_class": class_label,
+            "student_year": year_label,
+            # Matching flag for visual prioritization
+            "subject_match": is_subject_match,
+            # Pinned / important flag — normalize timezone for comparison
+            "is_escalated": _is_overdue(self.escalation_deadline),
+        }
+        return result
 
     # ------------------------------------------------------------------
     #  ADMIN-FACING SERIALIZATION — enforces anonymous PII protection
@@ -276,3 +391,71 @@ def current_faculty():
     if 'faculty_id' not in _flask_session:
         return None
     return db.session.get(Faculty, _flask_session['faculty_id'])
+
+
+# ------------------------------------------------------------------
+#  HELPER — check if a datetime is overdue (timezone-safe)
+# ------------------------------------------------------------------
+
+def _is_overdue(dt):
+    """Return True if *dt* (datetime or None) has passed.
+
+    Handles both timezone-aware and naive datetimes by normalising
+    to UTC-aware before comparison — avoids the SQLite/MySQL mismatch
+    where stored timestamps are often naive.
+    """
+    if dt is None:
+        return False
+    now = datetime.now(timezone.utc)
+    # If the stored value is naive, assume it's UTC (same as server time)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt < now
+
+
+# ------------------------------------------------------------------
+#  HELPER — derive class/year from roll_number for anonymized display
+# ------------------------------------------------------------------
+
+def _parse_roll_for_class(roll_number):
+    """Extract a readable class label and year from a roll number.
+
+    Examples:
+        ``CS2024001`` → ("CSE", "2024")
+        ``EC2025010`` → ("ECE", "2025")
+        ``None``      → ("Unknown", "N/A")
+
+    Returns
+    -------
+    tuple[str, str]
+        ``(class_label, year_label)``.
+    """
+    if not roll_number:
+        return "Unknown", "N/A"
+
+    # Extract 4-digit year from the middle of the roll number
+    import re as _re
+    match = _re.search(r'(\d{4})', str(roll_number))
+    if not match:
+        return "Unknown", "N/A"
+
+    year_label = match.group(1)
+
+    # Extract department code from the leading letters
+    dept_code = _re.split(r'\d', str(roll_number))[0].upper()
+    dept_map = {
+        "CS": "CSE",
+        "CSE": "CSE",
+        "CE": "CSE",
+        "IT": "IT",
+        "EC": "ECE",
+        "EE": "EEE",
+        "ME": "MechE",
+        "CV": "Civil",
+        "CH": "Chemical",
+        "MA": "Maths",
+        "PH": "Physics",
+    }
+    class_label = dept_map.get(dept_code, dept_code)
+
+    return class_label, year_label
