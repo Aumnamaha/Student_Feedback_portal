@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+{% block title %}Manage Faculty — Student Feedback{% endblock %}
+
+{% block head %}
+<style>
+    .faculty-table th, .faculty-table td { padding: 0.75rem; text-align: left; border-bottom: 1px solid #e0e0e0; font-size: 0.95rem; }
+    .create-form-wrapper { margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #e2e8f0; }
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 600px) { .form-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<h1>Manage Faculty</h1>
+<p class="subtitle">{{ faculty_accounts|length }} faculty account{{ 's' if faculty_accounts|length != 1 else '' }}</p>
+
+<!-- ===== FACULTY LIST TABLE ===== -->
+<div class="card">
+    {% if faculty_accounts %}
+        <table class="faculty-table">
+            <thead>
+                <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Faculty ID</th>
+                    <th>Department</th>
+                    <th>Subjects Taught</th>
+                    <th>Created</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for f in faculty_accounts %}
+                <tr>
+                    <td>{{ f.name }}</td>
+                    <td>{{ f.email }}</td>
+                    <td><code>{{ f.faculty_id }}</code></td>
+                    <td>{{ f.department }}</td>
+                    <td>{{ f.subject_taught }}</td>
+                    <td>{{ f.created_at.strftime('%d %b %Y') if f.created_at else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="empty-state">No faculty accounts found. Create one below.</p>
+    {% endif %}
+</div>
+
+<!-- ===== CREATE NEW FACULTY FORM ===== -->
+<div class="card create-form-wrapper">
+    <h2>Create New Faculty Account</h2>
+
+    <form method="POST" action="{{ url_for('admin.faculty_create') }}">
+        <div class="form-grid">
+            <div class="form-group">
+                <label for="name">Full Name *</label>
+                <input type="text" id="name" name="name" required placeholder="e.g. Dr. Jane Smith">
+            </div>
+            <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" id="email" name="email" required placeholder="jane.smith@studentfeedback.local">
+            </div>
+            <div class="form-group">
+                <label for="faculty_id">Faculty ID *</label>
+                <input type="text" id="faculty_id" name="faculty_id" required placeholder="e.g. FAC-003">
+            </div>
+            <div class="form-group">
+                <label for="department">Department *</label>
+                <select id="department" name="department" required>
+                    <option value="">— Select Department —</option>
+                    {% for dept in ['Computer Science', 'Electronics', 'Mechanical', 'Civil', 'Chemical', 'Maths', 'Physics'] %}
+                        <option value="{{ dept }}">{{ dept }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="subject_taught">Subject(s) Taught *</label>
+                <input type="text" id="subject_taught" name="subject_taught" required placeholder="e.g. Data Structures, Algorithms">
+            </div>
+            <div class="form-group">
+                <label for="password">Password *</label>
+                <input type="password" id="password" name="password" required minlength="6" placeholder="Min 6 characters">
+            </div>
+            <div class="form-group">
+                <label for="confirm_password">Confirm Password *</label>
+                <input type="password" id="confirm_password" name="confirm_password" required minlength="6" placeholder="Re-enter password">
+            </div>
+        </div>
+
+        {% if form_error %}
+            <p style="color: var(--danger); margin-top: 1rem; font-weight: 600;">{{ form_error }}</p>
+        {% endif %}
+
+        <button type="submit" class="btn-primary">Create Faculty Account</button>
+    </form>
+</div>
+
+<a href="{{ url_for('admin.dashboard') }}" style="display:inline-block; margin-top:1rem;">← Back to Dashboard</a>
+{% endblock %}

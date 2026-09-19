@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, flash, redirect, render_template, request, session, url_for
 from sqlalchemy import func
 
-from models import Feedback, User, _is_overdue, db
+from models import Feedback, Faculty, User, _is_overdue, db
 from blueprints.auth.routes import login_required, admin_required
 
 admin_bp = Blueprint('admin', __name__, template_folder='../../templates')
@@ -408,4 +408,112 @@ def reports():
         pinned_count=pinned_items,
         high_fail_count=high_fail_items,
         total_escalations=total_escalations,
+    )
+
+
+# ------------------------------------------------------------------ #
+#  FACULTY MANAGEMENT — list + create                                  #
+# ------------------------------------------------------------------ #
+
+@admin_bp.route('/faculty')
+@login_required
+@admin_required
+def faculty_list():
+    """List all faculty accounts."""
+    from models import Faculty as _Faculty
+    faculty_accounts = (
+        db.session.query(_Faculty)
+        .order_by(_Faculty.created_at.desc())
+        .all()
+    )
+    return render_template(
+        'admin_faculty.html',
+        faculty_accounts=faculty_accounts,
+    )
+
+
+@admin_bp.route('/faculty/create', methods=['GET', 'POST'])
+@login_required
+@admin_required
+def faculty_create():
+    """Create a new faculty account (same validation as seed_faculty)."""
+    if request.method == 'POST':
+        name = request.form.get('name', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        faculty_id = request.form.get('faculty_id', '').strip()
+        department = request.form.get('department', '').strip()
+        subject_taught = request.form.get('subject_taught', '').strip()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+
+        # --- validation ---
+        if not all([name, email, faculty_id, department, subject_taught, password]):
+            flash('All fields are required.', 'error')
+            return render_template(
+                'admin_faculty.html',
+                faculty_accounts=Faculty.query.order_by(Faculty.created_at.desc()).all(),
+                form_error='All fields are required.',
+            )
+
+        if len(password) < 6:
+            flash('Password must be at least 6 characters.', 'error')
+            return render_template(
+                'admin_faculty.html',
+                faculty_accounts=Faculty.query.order_by(Faculty.created_at.desc()).all(),
+                form_error='Password must be at least 6 characters.',
+            )
+
+        if password != confirm_password:
+            flash('Passwords do not match.', 'error')
+            return render_template(
+                'admin_faculty.html',
+                faculty_accounts=Faculty.query.order_by(Faculty.created_at.desc()).all(),
+                form_error='Passwords do not match.',
+            )
+
+        # --- duplicate checks (same as seed_faculty) ---
+        existing_email = Faculty.query.filter_by(email=email).first()
+        if existing_email:
+            flash(f'Faculty with email "{email}" already exists.', 'error')
+            return render_template(
+                'admin_faculty.html',
+                faculty_accounts=Faculty.query.order_by(Faculty.created_at.desc()).all(),
+                form_error=f'Email "{email}" is already registered.',
+            )
+
+        existing_id = Faculty.query.filter_by(faculty_id=faculty_id).first()
+        if existing_id:
+            flash(
+                f'Faculty with ID "{faculty_id}" already exists '
+                f'(email: {existing_id.email}).',
+                'error'
+            )
+            return render_template(
+                'admin_faculty.html',
+                faculty_accounts=Faculty.query.order_by(Faculty.created_at.desc()).all(),
+                form_error=f'Faculty ID "{faculty_id}" is already registered.',
+            )
+
+        # --- create ---
+        new_faculty = Faculty(
+            name=name,
+            email=email,
+            faculty_id=faculty_id,
+            department=department,
+            subject_taught=subject_taught,
+        )
+        new_faculty.set_password(password)
+        db.session.add(new_faculty)
+        db.session.commit()
+
+        flash(
+            f'Faculty account created: {name} ({email})',
+            'success'
+        )
+        return redirect(url_for('admin.faculty_list'))
+
+    # GET — show empty form
+    return render_template(
+        'admin_faculty.html',
+        faculty_accounts=Faculty.query.order_by(Faculty.created_at.desc()).all(),
     )

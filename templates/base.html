@@ -16,6 +16,7 @@
                 {% if session.role == 'admin' %}
                     <a href="{{ url_for('admin.dashboard') }}">Dashboard</a>
                     <a href="{{ url_for('admin.reports') }}">Reports</a>
+                    <a href="{{ url_for('admin.faculty_list') }}">Manage Faculty</a>
                 {% elif session.role == 'faculty' %}
                     <a href="{{ url_for('faculty.dashboard') }}">My Feedback</a>
                 {% else %}

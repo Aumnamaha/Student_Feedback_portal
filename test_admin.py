@@ -385,6 +385,197 @@ def test_feedback_status_update_invalid_rejected():
         assert fb_updated.status == "Pending"
 
 
+# ------------------------------------------------------------------ #
+#  ESCALATION LOGIC — _is_escalated() COVERAGE                         #
+# ------------------------------------------------------------------ #
+
+def test_is_escalated_failed_verification_count_ge_3():
+    """Escalation triggers when failed_verification_count >= 3."""
+    from blueprints.admin import _is_escalated
+    app = _make_app()
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+
+        s1 = User(name="Student", email="std@test.com", roll_number="CS001", role="student")
+        s1.set_password("pass123")
+        db.session.add(s1)
+        db.session.flush()
+
+        fb = Feedback(student_id=s1.id, category="Food", rating=3,
+                      comment="Test escalated by failure count.", status="Resolved",
+                      failed_verification_count=3)
+        db.session.add(fb)
+        db.session.commit()
+
+    with app.app_context():
+        fb = db.session.get(Feedback, 1)
+        assert _is_escalated(fb) is True
+
+        # Below threshold should NOT trigger
+        fb.failed_verification_count = 2
+        assert _is_escalated(fb) is False
+
+        # Zero / None should also be safe
+        fb.failed_verification_count = 0
+        assert _is_escalated(fb) is False
+
+
+def test_is_escalated_pinned_with_overdue_deadline():
+    """Pinned + overdue escalation_deadline triggers escalation."""
+    from blueprints.admin import _is_escalated
+    app = _make_app()
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+
+        s1 = User(name="Student", email="std2@test.com", roll_number="CS002", role="student")
+        s1.set_password("pass123")
+        db.session.add(s1)
+        db.session.flush()
+
+        from datetime import datetime, timedelta
+        past = datetime.now() - timedelta(days=5)
+
+        fb_pinned_overdue = Feedback(student_id=s1.id, category="Food", rating=3,
+                                     comment="Overdue Pinned.", status="Pinned",
+                                     escalation_deadline=past,
+                                     failed_verification_count=0)
+        db.session.add(fb_pinned_overdue)
+
+        fb_pinned_future = Feedback(student_id=s1.id, category="Food", rating=3,
+                                    comment="Future deadline Pinned.", status="Pinned",
+                                    escalation_deadline=datetime.now() + timedelta(days=5),
+                                    failed_verification_count=0)
+        db.session.add(fb_pinned_future)
+
+        db.session.commit()
+
+    with app.app_context():
+        fb_overdue = db.session.get(Feedback, 1)
+        fb_future = db.session.get(Feedback, 2)
+
+        assert _is_escalated(fb_overdue) is True, "Pinned + overdue should escalate"
+        assert _is_escalated(fb_future) is False, "Pinned + future deadline should NOT escalate"
+
+
+def test_is_escalated_resolved_with_overdue_deadline():
+    """Resolved + past escalation_deadline triggers escalation."""
+    from blueprints.admin import _is_escalated
+    app = _make_app()
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+
+        s1 = User(name="Student", email="std3@test.com", roll_number="CS003", role="student")
+        s1.set_password("pass123")
+        db.session.add(s1)
+        db.session.flush()
+
+        from datetime import datetime, timedelta
+        past = datetime.now() - timedelta(days=5)
+
+        fb_resolved_overdue = Feedback(student_id=s1.id, category="Food", rating=3,
+                                       comment="Overdue Resolved.", status="Resolved",
+                                       escalation_deadline=past,
+                                       failed_verification_count=0)
+        db.session.add(fb_resolved_overdue)
+
+        fb_resolved_no_deadline = Feedback(student_id=s1.id, category="Food", rating=3,
+                                           comment="No deadline Resolved.", status="Resolved",
+                                           escalation_deadline=None,
+                                           failed_verification_count=0)
+        db.session.add(fb_resolved_no_deadline)
+
+        db.session.commit()
+
+    with app.app_context():
+        fb_overdue = db.session.get(Feedback, 1)
+        fb_clean = db.session.get(Feedback, 2)
+
+        assert _is_escalated(fb_overdue) is True, "Resolved + overdue should escalate"
+        assert _is_escalated(fb_clean) is False, "Resolved + no deadline should NOT escalate"
+
+
+def test_is_escalated_false_positives():
+    """Ensure escalation does NOT trigger for benign statuses."""
+    from blueprints.admin import _is_escalated
+    app = _make_app()
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+
+        s1 = User(name="Student", email="std4@test.com", roll_number="CS004", role="student")
+        s1.set_password("pass123")
+        db.session.add(s1)
+        db.session.flush()
+
+        # Pending with no deadlines — should never escalate
+        fb_pending = Feedback(student_id=s1.id, category="Food", rating=3,
+                              comment="Pending.", status="Pending",
+                              escalation_deadline=None,
+                              failed_verification_count=0)
+        db.session.add(fb_pending)
+
+        # In Progress with no deadlines — should never escalate
+        fb_in_progress = Feedback(student_id=s1.id, category="Food", rating=3,
+                                  comment="In Progress.", status="In Progress",
+                                  escalation_deadline=None,
+                                  failed_verification_count=0)
+        db.session.add(fb_in_progress)
+
+        # Verified/Closed — already resolved by admin
+        fb_verified = Feedback(student_id=s1.id, category="Food", rating=3,
+                               comment="Verified Closed.", status="Verified/Closed",
+                               escalation_deadline=None,
+                               failed_verification_count=0)
+        db.session.add(fb_verified)
+
+        # Verification Failed — not a Resolved item
+        fb_vfail = Feedback(student_id=s1.id, category="Food", rating=3,
+                            comment="Verification Failed.", status="Verification Failed",
+                            escalation_deadline=None,
+                            failed_verification_count=2)  # < 3 threshold
+        db.session.add(fb_vfail)
+
+        db.session.commit()
+
+    with app.app_context():
+        assert _is_escalated(db.session.get(Feedback, 1)) is False   # Pending
+        assert _is_escalated(db.session.get(Feedback, 2)) is False   # In Progress
+        assert _is_escalated(db.session.get(Feedback, 3)) is False   # Verified/Closed
+        assert _is_escalated(db.session.get(Feedback, 4)) is False   # Verification Failed (count < 3)
+
+
+def test_is_escalated_combined_triggers():
+    """When multiple escalation conditions are true, still returns True."""
+    from blueprints.admin import _is_escalated
+    app = _make_app()
+    with app.app_context():
+        db.drop_all()
+        db.create_all()
+
+        s1 = User(name="Student", email="std5@test.com", roll_number="CS005", role="student")
+        s1.set_password("pass123")
+        db.session.add(s1)
+        db.session.flush()
+
+        from datetime import datetime, timedelta
+        past = datetime.now() - timedelta(days=5)
+
+        # Both count >= 3 AND overdue Pinned — should still be True (not double-counted)
+        fb_multi = Feedback(student_id=s1.id, category="Food", rating=3,
+                            comment="Multi-trigger.", status="Pinned",
+                            escalation_deadline=past,
+                            failed_verification_count=5)
+        db.session.add(fb_multi)
+        db.session.commit()
+
+    with app.app_context():
+        fb = db.session.get(Feedback, 1)
+        assert _is_escalated(fb) is True
+
+
 if __name__ == "__main__":
     import pytest
 
