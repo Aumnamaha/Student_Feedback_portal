@@ -1,9 +1,67 @@
 {% extends "base.html" %}
 {% block title %}Reports — Student Feedback{% endblock %}
 
+{% block head %}
+<style>
+    /* Verification metrics cards */
+    .metrics-row { display: flex; gap: 1rem; margin-bottom: 1.5rem; flex-wrap: wrap; }
+    .metric-card { background: #fff; border-radius: 8px; padding: 1.25rem; flex: 1; min-width: 160px; box-shadow: 0 2px 6px rgba(0,0,0,.07); text-align: center; }
+    .metric-card .metric-value { font-size: 2rem; font-weight: 700; color: var(--primary-color); }
+    .metric-card.danger .metric-value { color: var(--danger); }
+    .metric-card.success .metric-value { color: #16a34a; }
+    .metric-card.warning .metric-value { color: #d97706; }
+    .metric-card .metric-label { font-size: 0.85rem; color: #666; margin-top: 0.25rem; }
+
+    /* Department table */
+    .dept-table th, .dept-table td { padding: 0.5rem 0.75rem; }
+</style>
+{% endblock %}
+
 {% block content %}
 <h1>Reports</h1>
 <p class="subtitle">Summary statistics across all feedback.</p>
+
+<!-- ===== VERIFICATION & ESCALATION SUMMARY ===== -->
+<div class="metrics-row">
+    <div class="metric-card success">
+        <div class="metric-value">{{ pinned_count }}</div>
+        <div class="metric-label">Pinned (Overdue)</div>
+    </div>
+    <div class="metric-card warning">
+        <div class="metric-value">{{ high_fail_count }}</div>
+        <div class="metric-label">High Fail Verif. (≥3)</div>
+    </div>
+    <div class="metric-card danger">
+        <div class="metric-value">{{ total_escalations }}</div>
+        <div class="metric-label">Total Escalations</div>
+    </div>
+    <div class="metric-card">
+        <div class="metric-value" style="font-size:1.5rem;">{{ avg_resolution_time }}</div>
+        <div class="metric-label">Avg Resolution Time<br><small>(faculty-routed)</small></div>
+    </div>
+</div>
+
+<!-- ===== FEEDBACK BY DEPARTMENT ===== -->
+<div class="card">
+    <h2>Feedback Count by Department</h2>
+    {% if dept_stats %}
+        <table class="dept-table">
+            <thead>
+                <tr><th>Department</th><th>Total Feedback</th></tr>
+            </thead>
+            <tbody>
+                {% for row in dept_stats %}
+                <tr>
+                    <td>{{ row[0] }}</td>
+                    <td>{{ row[1] }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="empty-state">No department data available.</p>
+    {% endif %}
+</div>
 
 <!-- ===== AVG RATING BY CATEGORY (with bar chart) ===== -->
 <div class="card">

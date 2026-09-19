@@ -1,6 +1,32 @@
 {% extends "base.html" %}
 {% block title %}Admin Dashboard — Student Feedback{% endblock %}
 
+{% block head %}
+<style>
+    /* Escalation badge */
+    .badge-escalated { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; animation: pulse-escalation 2s infinite; }
+    @keyframes pulse-escalation {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+        50%      { box-shadow: 0 0 0 4px rgba(239,68,68,0); }
+    }
+
+    /* Faculty Review section */
+    .review-section { margin-top: 2rem; padding-top: 1.5rem; border-top: 2px solid #e2e8f0; }
+    .review-stats { display: flex; gap: 1rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .review-stat { background: #f8fafc; padding: 0.5rem 1rem; border-radius: 6px; font-size: 0.9rem; border-left: 3px solid var(--primary-color); }
+    .review-stat.warning { border-left-color: var(--danger); }
+    .review-stat.success { border-left-color: var(--success); }
+
+    /* Verification action buttons in table */
+    .verify-actions { display: flex; gap: 0.3rem; }
+    .btn-verify-success { background: #7c3aed; color: #fff; border: none; padding: 0.25rem 0.6rem; border-radius: 3px; font-size: 0.8rem; cursor: pointer; text-decoration: none; }
+    .btn-verify-fail { background: var(--danger); color: #fff; border: none; padding: 0.25rem 0.6rem; border-radius: 3px; font-size: 0.8rem; cursor: pointer; text-decoration: none; }
+
+    /* Pinned status */
+    .badge-pinned { background: #fef3c7; color: #92400e; }
+</style>
+{% endblock %}
+
 {% block content %}
 <h1>Admin Dashboard</h1>
 <p class="subtitle">{{ total_count }} feedback entry{{ 'ies' if total_count != 1 else 'y' }}</p>
@@ -10,7 +36,7 @@
     <select name="category">
         <option value="">All Categories</option>
         {% for cat in ['Food', 'Faculty', 'Infrastructure', 'Events', 'Other'] %}
-            <option value="{{ cat }}" {{ 'selected' if filters.category == cat }}>{{ cat }}</option>
+            <option value="{{ cat }}" {{ 'selected' if filters.category == cat }}>{% if filters.category == cat %}{{ cat }} (changed){% else %}{{ cat }}{% endif %}</option>
         {% endfor %}
     </select>
 
@@ -23,8 +49,8 @@
 
     <select name="status">
         <option value="">All Statuses</option>
-        {% for s in ['Pending', 'In Progress', 'Resolved'] %}
-            <option value="{{ s }}" {{ 'selected' if filters.status == s }}>{{ s }}</option>
+        {% for s in ['Pending', 'In Progress', 'Resolved', 'Pinned', 'Verified/Closed', 'Verification Failed'] %}
+            <option value="{{ s }}" {{ 'selected' if filters.status == s }}>{% if filters.status == s %}{{ s }} (changed){% else %}{{ s }}{% endif %}</option>
         {% endfor %}
     </select>
 
@@ -72,6 +98,78 @@
         </table>
     {% else %}
         <p class="empty-state">No feedback matches your filters.</p>
+    {% endif %}
+</div>
+
+<!-- ===== FACULTY REVIEW SECTION — Resolved (pending verification) + Pinned ===== -->
+<div class="card review-section">
+    <h2>🔍 Faculty Review <small style="font-weight:400;color:#666;font-size:0.85rem;">(Resolved items awaiting admin verification &amp; overdue/Pinned items)</small></h2>
+
+    <!-- Stats row -->
+    <div class="review-stats">
+        <span class="review-stat success">{{ resolved_count }} Resolved (pending verification)</span>
+        <span class="review-stat warning">{{ pinned_count }} Pinned (overdue/escalated)</span>
+        {% if escalation_count > 0 %}
+            <span class="review-stat warning" style="border-left-color: var(--danger);">⚠️ {{ escalation_count }} Escalated</span>
+        {% endif %}
+    </div>
+
+    {% if faculty_review %}
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Date</th>
+                    <th>Category</th>
+                    <th>Rating</th>
+                    <th>Status</th>
+                    <th>Failed Verif.</th>
+                    <th>Escalated?</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for fb in faculty_review %}
+                <tr{% if fb['_is_escalated'] %} style="background:#fef2f2;"{% endif %}>
+                    <td>{{ fb.id }}</td>
+                    <td>{{ fb.created_at.strftime('%d/%m/%Y') }}</td>
+                    <td>{{ fb.category }}</td>
+                    <td>{{ "⭐" * fb.rating }}</td>
+                    <td>
+                        {% if fb.status == 'Resolved' %}
+                            <span class="badge badge-resolved">Resolved</span>
+                        {% elif fb.status == 'Pinned' %}
+                            <span class="badge badge-pinned">Pinned</span>
+                        {% endif %}
+                    </td>
+                    <td>{{ fb['_failed_count'] }}</td>
+                    <td>
+                        {% if fb['_is_escalated'] %}
+                            <span class="badge badge-escalated">⚠ Escalated</span>
+                        {% else %}
+                            —
+                        {% endif %}
+                    </td>
+                    <td class="verify-actions">
+                        {% if fb.status == 'Resolved' %}
+                            <!-- Verify Success -->
+                            <form method="POST" action="{{ url_for('admin.verify_success', fb_id=fb.id) }}" style="display:inline" onsubmit="return confirm('Mark this feedback as Verified/Closed?')">
+                                <button type="submit" class="btn-verify-success">✓ Verify</button>
+                            </form>
+                            <!-- Verify Failure -->
+                            <form method="POST" action="{{ url_for('admin.verify_failure', fb_id=fb.id) }}" style="display:inline" onsubmit="return confirm('Mark verification as Failed? Status will revert to In Progress.')">
+                                <button type="submit" class="btn-verify-fail">✗ Fail</button>
+                            </form>
+                        {% else %}
+                            <a href="{{ url_for('admin.feedback_detail', fb_id=fb.id) }}">View</a>
+                        {% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p class="empty-state">No items in the Faculty Review queue.</p>
     {% endif %}
 </div>
 {% endblock %}

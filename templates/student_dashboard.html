@@ -6,6 +6,15 @@
     .extra-fields { display: none; margin-top: 1rem; padding: 1rem; background: #f8fafc; border-radius: 6px; }
     .extra-fields.visible { display: block; }
     .countdown-inline { font-size: 0.75rem; font-family: monospace; color: var(--primary-color); }
+
+    /* Comment thread (student view) */
+    .comment-toggle-btn { background: none; border: 1px solid #ccc; padding: 0.2rem 0.6rem; border-radius: 3px; cursor: pointer; font-size: 0.8rem; color: var(--primary-color); }
+    .comment-toggle-btn:hover { background: #f0f4ff; }
+    .comment-section { display: none; margin-top: 0.75rem; padding: 1rem; background: #fafafa; border-radius: 6px; border-left: 3px solid var(--primary-color); }
+    .comment-section.visible { display: block; }
+    .comment-item { padding: 0.75rem; margin-bottom: 0.5rem; background: #fff; border-radius: 4px; border-left: 3px solid var(--primary-color); box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+    .comment-meta { font-size: 0.8rem; color: #888; margin-bottom: 0.25rem; }
+    .no-comments { font-style: italic; color: #888; font-size: 0.9rem; padding: 0.5rem 0; }
 </style>
 {% endblock %}
 
@@ -88,6 +97,7 @@
                     <th>Status</th>
                     <th>Countdown</th>
                     <th>Anon.</th>
+                    <th>Comments</th>
                 </tr>
             </thead>
             <tbody>
@@ -99,6 +109,19 @@
                     <td><span class="badge badge-{{ fb.status|lower|replace(' ', '-') }}">{{ fb.status }}</span></td>
                     <td><span id="countdown-student-{{ fb.id }}" class="countdown-inline">—</span></td>
                     <td>{% if fb.is_anonymous %}Yes{% else %}No{% endif %}</td>
+                    <td>
+                        <button type="button" class="comment-toggle-btn" onclick="toggleComments({{ fb.id }}, this)">💬 View Comments</button>
+                    </td>
+                </tr>
+
+                <!-- Collapsible comment section per row -->
+                <tr id="comment-row-{{ fb.id }}" style="display:none;">
+                    <td colspan="7">
+                        <div id="comments-container-{{ fb.id }}" class="comment-section" data-fb-id="{{ fb.id }}">
+                            <strong>Discussion Thread</strong>
+                            <div id="comments-list-{{ fb.id }}"></div>
+                        </div>
+                    </td>
                 </tr>
                 {% endfor %}
             </tbody>
@@ -133,6 +156,56 @@ function toggleExtraFields() {
         subjectWrapper.style.display = 'none';
         subjectInput.required = false;
     }
+}
+
+// Toggle comment section visibility per feedback item
+function toggleComments(fbId, btn) {
+    const row = document.getElementById(`comment-row-${fbId}`);
+    const section = document.getElementById(`comments-container-${fbId}`);
+    const list = document.getElementById(`comments-list-${fbId}`);
+
+    if (row.style.display === 'none') {
+        // Expand — load comments if not already loaded
+        row.style.display = '';
+        section.classList.add('visible');
+        if (!list.dataset.loaded) {
+            list.innerHTML = '<p class="no-comments">Loading...</p>';
+            fetch(`/faculty/feedback/${fbId}/comments`)
+                .then(r => r.json())
+                .then(comments => {
+                    list.innerHTML = '';
+                    if (!comments.length) {
+                        list.innerHTML = '<p class="no-comments">No comments yet.</p>';
+                        return;
+                    }
+                    comments.forEach(c => {
+                        const div = document.createElement('div');
+                        div.className = 'comment-item';
+                        const date = new Date(c.created_at).toLocaleString();
+                        const authorLabel = c.author_type === 'faculty' ? 'Faculty' : 'Student';
+                        div.innerHTML = `<div class="comment-meta">${authorLabel} · ${date}</div><p style="white-space:pre-wrap;margin-top:0.25rem">${escapeHtml(c.text)}</p>`;
+                        list.appendChild(div);
+                    });
+                    list.dataset.loaded = 'true';
+                })
+                .catch(err => {
+                    list.innerHTML = '<p class="no-comments" style="color:red;">Failed to load comments.</p>';
+                    console.error('Comment load failed:', err);
+                });
+        }
+        btn.textContent = '💬 Hide Comments';
+    } else {
+        // Collapse
+        row.style.display = 'none';
+        section.classList.remove('visible');
+        btn.textContent = '💬 View Comments';
+    }
+}
+
+function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
 }
 </script>
 {% endblock %}

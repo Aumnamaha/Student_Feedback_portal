@@ -72,9 +72,28 @@ CREATE TABLE IF NOT EXISTS feedback (
         FOREIGN KEY (resolved_by_faculty_id) REFERENCES faculty (id)
 );
 
--- -----------------------------------------------------------
--- comment (threaded comments on feedback items)
--- -----------------------------------------------------------
+-- ============================================================
+-- MIGRATION NOTE — ENUM status extension
+-- ============================================================
+-- The feedback.status column was extended from:
+--   ('Pending', 'In Progress', 'Resolved')
+-- to include the verification workflow statuses:
+--   ('Pending', 'In Progress', 'Resolved', 'Pinned',
+--    'Verified/Closed', 'Verification Failed')
+--
+-- If you are running this schema.sql against an EXISTING MySQL
+-- database that already has data, run these ALTER TABLE commands
+-- BEFORE creating tables (or after dropping/recreating):
+--
+--   ALTER TABLE feedback MODIFY COLUMN status ENUM(
+--       'Pending', 'In Progress', 'Resolved',
+--       'Pinned', 'Verified/Closed', 'Verification Failed')
+--       NOT NULL DEFAULT 'Pending';
+--
+-- For SQLite (used in tests), the ENUM is handled by SQLAlchemy
+-- via db.Enum() — no schema change needed.
+-- ============================================================
+
 CREATE TABLE IF NOT EXISTS comment (
     id            INT AUTO_INCREMENT PRIMARY KEY,
     feedback_id   INT           NOT NULL,

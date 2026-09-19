@@ -1,8 +1,46 @@
 {% extends "base.html" %}
 {% block title %}Feedback #{{ feedback.id }} — Student Feedback{% endblock %}
 
+{% block head %}
+<style>
+    /* Escalation badge */
+    .badge-escalated { background: #fee2e2; color: #991b1b; border: 1px solid #fca5a5; animation: pulse-escalation 2s infinite; }
+    @keyframes pulse-escalation {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.4); }
+        50%      { box-shadow: 0 0 0 4px rgba(239,68,68,0); }
+    }
+
+    /* Verification action buttons */
+    .verify-actions { display: flex; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #eee; }
+    .btn-verify-success { background: #7c3aed; color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.9rem; cursor: pointer; text-decoration: none; display: inline-block; }
+    .btn-verify-fail { background: var(--danger); color: #fff; border: none; padding: 0.5rem 1rem; border-radius: 4px; font-size: 0.9rem; cursor: pointer; text-decoration: none; display: inline-block; }
+
+    .escalation-alert { background: #fef2f2; border: 2px solid var(--danger); padding: 1rem; border-radius: 8px; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.75rem; }
+    .escalation-alert strong { color: var(--danger); }
+
+    /* Pinned status */
+    .badge-pinned { background: #fef3c7; color: #92400e; }
+</style>
+{% endblock %}
+
 {% block content %}
 <a href="{{ url_for('admin.dashboard') }}" style="color: var(--primary-color); text-decoration: none;">← Back to Dashboard</a>
+
+<!-- Escalation alert -->
+{% if escalation_badge %}
+<div class="escalation-alert">
+    <span style="font-size:1.5rem;">⚠️</span>
+    <div>
+        <strong>This feedback item is escalated.</strong>
+        {% if feedback.failed_verification_count >= 3 %}
+            Failed verification count has reached {{ feedback.failed_verification_count }} (threshold: 3).
+        {% endif %}
+        {% if feedback.status == 'Pinned' %}
+            This item was pinned due to overdue review with no faculty action.
+        {% endif %}
+    </div>
+</div>
+{% endif %}
 
 <div class="card">
     <h2>Feedback #{{ feedback.id }}</h2>
@@ -32,7 +70,17 @@
         <dd>{{ "⭐" * feedback.rating }} ({{ feedback.rating }}/5)</dd>
 
         <dt><strong>Status</strong></dt>
-        <dd><span class="badge badge-{{ feedback.status|lower|replace(' ', '-') }}">{{ feedback.status }}</span></dd>
+        <dd>
+            {% if feedback.status == 'Pinned' %}
+                <span class="badge badge-pinned">{{ feedback.status }}</span>
+            {% elif escalation_badge %}
+                <span class="badge {{ 'badge-' + (feedback.status|lower|replace(' ', '-')) }}">{{ feedback.status }}</span>
+                &nbsp;
+                <span class="badge badge-escalated">⚠ Escalated</span>
+            {% else %}
+                <span class="badge badge-{{ feedback.status|lower|replace(' ', '-') }}">{{ feedback.status }}</span>
+            {% endif %}
+        </dd>
 
         <dt><strong>Anonymous</strong></dt>
         <dd>{% if is_anonymous %}Yes{% else %}No{% endif %}</dd>
@@ -64,5 +112,18 @@
             <dd>{{ feedback.updated_at.strftime('%d/%m/%Y %H:%M') }}</dd>
         {% endif %}
     </dl>
+
+    <!-- Verification actions — only for Resolved items -->
+    {% if feedback.status == 'Resolved' %}
+    <div class="verify-actions">
+        <span style="font-weight:600;color:#555;margin-right:0.5rem;">Admin Verification:</span>
+        <form method="POST" action="{{ url_for('admin.verify_success', fb_id=feedback.id) }}" style="display:inline" onsubmit="return confirm('Mark this feedback as Verified/Closed?')">
+            <button type="submit" class="btn-verify-success">✓ Verified/Closed</button>
+        </form>
+        <form method="POST" action="{{ url_for('admin.verify_failure', fb_id=feedback.id) }}" style="display:inline" onsubmit="return confirm('Mark verification as Failed? Status will revert to In Progress and failed count will increment.')">
+            <button type="submit" class="btn-verify-fail">✗ Verification Failed</button>
+        </form>
+    </div>
+    {% endif %}
 </div>
 {% endblock %}

@@ -1,8 +1,15 @@
-"""Seed script — creates initial admin and faculty accounts."""
+"""Seed script — creates initial admin and faculty accounts.
+
+Run with:  python seed.py
+
+This connects to the live MySQL database configured in .env / DATABASE_URL
+and ensures an admin account + demo faculty exist.
+"""
 
 import os
 
-from app import create_app, db
+from app import create_app
+from models import db
 
 
 def seed_admin():
