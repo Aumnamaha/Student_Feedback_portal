@@ -306,6 +306,11 @@ class Feedback(db.Model):
             "status": self.status,
             # Raw datetime — templates call .strftime() on these
             "created_at": self.created_at,
+            "updated_at": self.updated_at,
+            # Verification / escalation fields needed by admin views
+            "failed_verification_count": int(self.failed_verification_count or 0),
+            "review_deadline": self.review_deadline,
+            "escalation_deadline": self.escalation_deadline,
         }
 
         # Only attach student PII when NOT anonymous

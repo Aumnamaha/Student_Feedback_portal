@@ -46,6 +46,12 @@ def create_app(config_object=None):
         faculty_bp, url_prefix="/faculty"    # /faculty/dashboard, etc.
     )
 
+    @app.route("/")
+    def index():
+        """Root landing page — redirect to login."""
+        from flask import redirect, url_for as _url_for
+        return redirect(_url_for('auth.login'))
+
     return app
 
 
