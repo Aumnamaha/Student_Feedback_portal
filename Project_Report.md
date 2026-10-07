@@ -515,7 +515,7 @@ The system shall ensure no data loss during feedback submission. Each database i
 
 ## NFR-05: Scalability
 
-The database schema shall support growth without requiring structural redesign. The current two-table design (`users` and `feedback`) with a one-to-many relationship can accommodate thousands of users and tens of thousands of feedback entries without modification. Future additions such as new categories, additional status values, or supplementary tables (e.g., for attachments, notifications) should be possible through ALTER TABLE operations that maintain backward compatibility with existing data.
+The database schema shall support growth without requiring structural redesign. The current four-table design (`users`, `faculty`, `feedback`, `comment`) with relationships spanning one-to-many (users→feedback, faculty→feedback via resolved_by_faculty_id), many-to-one (comment→feedback), and self-referencing (comment.parent_id→comment.id for nested replies) can accommodate thousands of users, hundreds of faculty members, and tens of thousands of feedback entries with comment threads without modification. Future additions such as new categories, additional status values, or supplementary tables (e.g., for attachments, notifications) should be possible through ALTER TABLE operations that maintain backward compatibility with existing data.
 
 **Acceptance Criteria**: Schema supports up to 10,000 users and 50,000 feedback entries without requiring migration scripts or structural changes. New ENUM values can be added to `category` and `status` columns via schema updates.
 
@@ -654,7 +654,7 @@ Custom decorators (`@login_required`, `@admin_required`) wrap route handler func
 
 ## 10.1 Textual Description for Diagram Generation
 
-The use case diagram illustrates the interactions between actors (users) and system functionalities (use cases). There are two primary actors in this system: **Student** and **Admin**. A tertiary implicit actor is the **Database**, which stores and retrieves data as needed by the system.
+The use case diagram illustrates the interactions between actors (users) and system functionalities (use cases). There are three primary actors in this system: **Student**, **Admin**, and **Faculty**. A tertiary implicit actor is the **Database**, which stores and retrieves data as needed by the system.
 
 ### Actors
 1. **Student**: An enrolled student who can register, login, submit feedback, view their own feedback history, read comment threads on their submissions, and logout.
@@ -689,7 +689,7 @@ The use case diagram illustrates the interactions between actors (users) and sys
 ### Relationships
 - **Includes**: "Submit Feedback" includes validation of all input fields (category selection required, rating 1–5 range enforced, comment text validated).
 - **Extends**: "Filter Feedback" extends "View All Feedback" — filtering is an optional refinement applied to the base view. Similarly, "Search Feedback" extends "View All Feedback".
-- **Generalization**: Both Student and Admin share the common use case of "Login", but with different credential sets and post-login redirections.
+- **Generalization**: Student, Admin, and Faculty all share the common use case of "Login", but with different credential sets and post-login redirections.
 
 ### Diagram Structure (for generation in StarUML or similar tool)
 ```
@@ -999,23 +999,18 @@ ORM Model → Flask Route Handler: [fb.to_faculty_dict(faculty_subject=faculty.s
 Flask Route Handler → Frontend: Render faculty_dashboard.html with feedback_list, pending_count, escalated_count
 Frontend → Faculty: Display department table with stats cards, countdown timers, escalation badges
 ```
-Frontend → Flask Route Handler (admin_bp.update_feedback_status): HTTP GET to /admin/feedback/<id>
-Flask Route Handler → ORM Model (Feedback): Query feedback by id using get_or_404()
-ORM Model → MySQL Database: SELECT * FROM feedback WHERE id = ?
-MySQL Database → ORM Model: Return Feedback record with current status and details
+## 12.3 Post Comment (Faculty, AJAX)
 
-ORM Model → Flask Route Handler: Render feedback_detail.html with full feedback data
-Frontend → Admin: Display detail page with full comment, metadata, and status update form
+This sequence describes how a matching faculty member posts a comment on a feedback item via an AJAX JSON POST request from the frontend.
 
-Admin → Frontend: Select new status (Pending/In Progress/Resolved) from dropdown; click "Update"
-Frontend → Flask Route Handler: HTTP POST to /admin/feedback/<id> with new_status value
+### Participants:
+1. **Faculty** — End-user typing a comment in the discussion thread
+2. **Frontend (faculty_feedback_detail.html)** — Comment form with inline JavaScript using comments.js / submitComment()
+3. **Flask Route Handler** (`blueprints/faculty/routes.py::post_comment`) — JSON POST handler for comment creation
+4. **ORM Model** (`Comment` class in `models.py`) — Creates new Comment record
+5. **Database Session / MySQL-SQLite** — Persistent storage
 
-Flask Route Handler → Flask Route Handler: Verify session role == 'admin' (authorization check)
-Flask Route Handler → ORM Model: feedback.status = new_status
-ORM Model → MySQL Database: UPDATE feedback SET status=?, updated_at=NOW() WHERE id=?
-MySQL Database → ORM Model: Confirmation of update
-
-### Comment Posting Sequence (AJAX):
+### Sequence Steps:
 
 ```
 Faculty/Student → Frontend: Type comment in textarea; click Post
@@ -1035,7 +1030,18 @@ else Form POST (non-AJAX)
     Flask Route Handler → Frontend: Flash message + redirect
 ```
 
-### Verification Sequence (Admin or Faculty):
+## 12.4 Verify Resolved Feedback (Faculty or Admin)
+
+This sequence describes the verification workflow when a faculty member or admin verifies a resolved feedback item. Both verify methods (`verify_success()` and `verify_failure()`) raise ValueError unless status == 'Resolved'.
+
+### Participants:
+1. **Admin or Faculty** — End-user clicking verification buttons on a Resolved feedback detail page
+2. **Frontend (admin_feedback_detail.html / faculty_feedback_detail.html)** — Verification action forms with CSRF tokens
+3. **Flask Route Handler** (`blueprints/admin/__init__.py::verify_success/verify_failure` OR `blueprints/faculty/routes.py::verify_feedback`) — POST handlers for verification actions
+4. **ORM Model** (`Feedback.verify_success()`, `Feedback.verify_failure()` in `models.py`) — Verification lifecycle methods
+5. **Database Session / MySQL-SQLite** — Persistent storage
+
+### Sequence Steps:
 
 ```
 Admin/Faculty → Frontend: Click "✓ Verify" or "✗ Fail" on a Resolved feedback item
@@ -1059,13 +1065,103 @@ Flask Route Handler → Frontend: Flash message confirming outcome
 Frontend → Admin/Faculty: Redirect back to detail page; updated status badge shown
 ```
 
+## 12.5 Admin Update Feedback Status
+
+This sequence describes how an admin updates the status of a feedback item through the Pending → In Progress → Resolved workflow.
+
+### Participants:
+1. **Admin** — End-user selecting new status from dropdown on feedback detail page
+2. **Frontend (admin_feedback_detail.html)** — Status update form with CSRF token
+3. **Flask Route Handler** (`blueprints/admin/__init__.py::update_status`) — POST handler for status updates
+4. **ORM Model** (`Feedback` class in `models.py`) — Updates status field and timestamp
+5. **Database Session / MySQL-SQLite** — Persistent storage
+
+### Sequence Steps:
+
+```
+Admin → Frontend: Click "View" on a feedback entry in admin dashboard table
+Frontend → Flask Route Handler (admin/__init__.py::feedback_detail): HTTP GET to /admin/feedback/<id>
+Flask Route Handler → ORM Model (Feedback): fb = db.session.get(Feedback, id) or get_or_404(id)
+ORM Model → MySQL Database: SELECT * FROM feedback WHERE id = ?
+MySQL Database → ORM Model: Return Feedback record with current status and details
+
+ORM Model → Flask Route Handler: Render admin_feedback_detail.html with full feedback data
+Frontend → Admin: Display detail page with full comment, metadata, and status update form
+
+Admin → Frontend: Select new status (Pending/In Progress/Resolved) from dropdown; click "Update"
+Frontend → Flask Route Handler: HTTP POST to /admin/feedback/<id>/status with new_status value + csrf_token
+
+Flask Route Handler → Flask Route Handler: Verify session role == 'admin' (@admin_required decorator)
+Flask Route Handler → ORM Model: fb.status = new_status; db.session.commit()
+ORM Model → MySQL Database: UPDATE feedback SET status=?, updated_at=NOW() WHERE id=?
+MySQL Database → ORM Model: Confirmation of update
+
+Flask Route Handler → Frontend: Flash message "Status updated to [new_status]"
+Frontend → Admin: Redirect back to admin dashboard; table now shows updated status badge
+```
+
 ---
 
 # Chapter 13: Activity Diagrams
 
 ## 13.1 Feedback Status Lifecycle (Activity Flow)
 
-This activity diagram describes the state transitions that a feedback entry undergoes from initial submission through eventual resolution. The workflow is linear with clear decision points at each stage.
+This activity diagram describes the state transitions that a feedback entry undergoes from initial submission through eventual resolution or closure. Unlike a simple linear workflow, this lifecycle involves multiple actors (Faculty and Admin), verification decision points with a failed-verification loop back to In Progress, and escalation checks when deadlines pass.
+
+### Process Flow:
+
+```
+[Start: Student submits feedback]
+          │
+          ▼
+┌─────────────────────┐
+│ Status = Pending    │ ◄── Default state on creation; review_deadline set (24h)
+└─────────────────────┘
+          │
+     ┌────┴────┐
+     │ Faculty │  Admin reviews or monitors
+     │ reviews │  (both can transition status)
+     └────┬────┘
+      Yes │        No → Monitor / escalate if overdue
+          ▼
+┌─────────────────────┐
+│ Status =            │ ◄── Set by Faculty or Admin
+│ In Progress         │
+└─────────────────────┘
+          │
+     ┌────┴────┐
+     │ Faculty │  Both can mark Resolved; resolved_by_faculty_id recorded
+     │ resolves │  when a faculty member does it
+     └────┬────┘
+      Yes │        No → Continue working / escalate if overdue
+          ▼
+┌─────────────────────┐
+│ Status = Resolved   │ ◄── Triggers verification requirement
+└─────────────────────┘
+          │
+          ▼
+    {Verification}
+          │
+     ┌────┴──────────────────┐
+     │ verify_success()      │  verify_failure()
+     │                       │
+     │ Status →              │  Status → In Progress
+     │ Verified/Closed       │  failed_verification_count += 1
+     │ (terminal state)      │  If count >= 3: item flagged as escalated
+     └───────────────────────┘
+          │
+          ▼
+    {Escalation Check}
+    (_check_and_escalate on each faculty dashboard load)
+          │
+     ┌────┴────┐
+     │ Past    │  Yes → Status = Pinned, escalation_deadline set
+     │ deadline│
+     └────┬────┘
+      No │        Yes → Flagged as escalated (is_escalated), highlighted on dashboards
+          ▼
+   [End: Feedback in terminal state]
+```
 
 ### Process Flow:
 
@@ -1109,16 +1205,25 @@ This activity diagram describes the state transitions that a feedback entry unde
 ```
 
 ### State Definitions:
-- **Pending**: The feedback has been submitted by a student but has not yet been reviewed or acknowledged by administration. This is the initial and default state for all newly created feedback records.
-- **In Progress**: An administrator has reviewed the feedback and determined that it requires action. The issue is actively being addressed — this could involve routing to the relevant department, scheduling maintenance, or planning policy changes.
-- **Resolved**: The issue described in the feedback has been addressed and closed. This is the terminal state; once marked as Resolved, no further status transitions are expected (though an administrator could theoretically revert it back for re-evaluation).
+- **Pending**: The feedback has been submitted by a student but has not yet been reviewed. This is the initial and default state for all newly created feedback records. A `review_deadline` (24 hours from submission) is set automatically.
+- **In Progress**: An administrator or faculty member has begun reviewing or acting on the item. The issue is actively being addressed. Items can return to this state via verification failure (`verify_failure()` increments `failed_verification_count`).
+- **Resolved**: A faculty or admin marks the issue as addressed. This is not a terminal state — it requires verification before the item can be closed. When marked Resolved by a faculty member, `resolved_by_faculty_id` is recorded.
+- **Pinned**: An overdue item that has passed its review deadline without status transition. Automatically set by `_check_and_escalate()` when the faculty dashboard loads. Escalated items are highlighted with red background and warning badges on both admin and faculty dashboards.
+- **Verified/Closed**: The terminal state — an admin or faculty member verified via `verify_success()` that the resolution was adequate. No further status transitions occur from this state; comments are disabled on the detail page.
+- **Verification Failed**: This is not a separate status value in the code. When verification fails, `verify_failure()` sets status back to 'In Progress' and increments `failed_verification_count`. The counter is displayed on dashboards as a metric (items with count >= 3 are flagged as escalated).
 
 ### Transitions:
-| From State | To State | Triggering Action |
-|---|---|---|
-| Pending | In Progress | Admin reviews and decides action is needed |
-| In Progress | Resolved | Admin confirms issue has been addressed |
-| Resolved | (terminal) | No further transitions — feedback lifecycle ends |
+| From State | To State | Triggering Action | Actor |
+|---|---|---|---|
+| Pending | In Progress | Admin or faculty reviews item and begins action | Faculty or Admin |
+| In Progress | Resolved | Issue addressed; marked by admin or faculty | Faculty or Admin |
+| Resolved | Verified/Closed | `verify_success()` called — resolution verified adequate | Faculty or Admin |
+| Resolved | In Progress | `verify_failure()` called — resolution inadequate, counter incremented | Faculty or Admin |
+| Pending/In Progress | Pinned | `_check_and_escalate()` detects overdue item (past review_deadline) | Automatic |
+| Any escalated state | Flagged as escalated | `failed_verification_count >= 3` or past escalation_deadline | Automatic
+
+### Failed Verification Loop:
+When a resolved item is verified as failed, the workflow loops back to In Progress with `failed_verification_count` incremented. Each subsequent verification failure increments the counter further. When the counter reaches 3 (or more), `_check_and_escalate()` will flag the item as escalated on the next faculty dashboard load, setting it to Pinned status if not already — creating a feedback loop that ensures problematic items receive administrative attention.|
 
 ## 13.2 Student Registration Activity Flow
 
@@ -1148,7 +1253,8 @@ This activity diagram describes the state transitions that a feedback entry unde
          ▼
 ┌─────────────────────┐
 │ HTTP POST to        │
-│ /register           │
+│ /register (with     │
+│ csrf_token in form) │
 └─────────────────────┘
           │
           ▼
@@ -1198,7 +1304,7 @@ This activity diagram describes the state transitions that a feedback entry unde
 │ filters:            │
 │ — category?         │
 │ — status?           │
-│ — min rating?       │
+│ — rating?           │
 │ — date range?       │
 │ — keyword search?   │
 └─────────────────────┘
@@ -1375,7 +1481,7 @@ U  = Unique Constraint ╌U║
 
 ---
 
-# Chapter 15# Chapter 15: Database Design
+# Chapter 15: Database Design
 
 ## 15.1 Schema Overview
 
@@ -1508,7 +1614,7 @@ No non-key attribute depends on another non-key attribute in any of the four tab
 
 ---
 
-# Chapter 16# Chapter 16: UI Design
+# Chapter 16: UI Design
 
 ## 16.1 Design Philosophy and Visual Language
 
@@ -1586,7 +1692,7 @@ A full-width page accessible from the admin dashboard via "Manage Faculty" link.
 
 ---
 
-# Chapter 17# Chapter 17: Implementation
+# Chapter 17: Implementation
 
 ## 17.1 Backend Architecture — Flask Application Factory
 
@@ -1724,7 +1830,7 @@ The configuration module uses a class-based approach where the `Config` base cla
 
 ---
 
-# Chapter 18# Chapter 18: Testing
+# Chapter 18: Testing
 
 ## 18.1 Testing Methodology
 
