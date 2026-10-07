@@ -32,10 +32,17 @@ function loadComments(fbId, containerId) {
 }
 
 // Post a comment via AJAX (used by student view for read-only, faculty can post)
+function getCsrfToken() {
+    return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+}
+
 function postComment(fbId, text) {
     return fetch(`/faculty/feedback/${fbId}/comment`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCsrfToken(),
+        },
         body: JSON.stringify({text: text}),
     })
     .then(r => r.json())

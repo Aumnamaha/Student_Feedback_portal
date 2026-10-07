@@ -26,6 +26,7 @@
 <div class="card">
     <h2>Submit New Feedback</h2>
     <form method="POST" action="{{ url_for('student.dashboard') }}">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <div class="form-row">
             <div class="form-group">
                 <label for="category">Category *</label>

@@ -30,6 +30,10 @@ def create_app(config_object=None):
     from models import db
     db.init_app(app)
 
+    # CSRF protection — disabled when WTF_CSRF_ENABLED is False (e.g. in tests)
+    from flask_wtf.csrf import CSRFProtect
+    CSRFProtect(app)
+
     # Register blueprints — routes are added in subsequent steps.
     # See PROJECT.md → Routes for the expected URL layout.
     from blueprints.auth import auth_bp

@@ -320,6 +320,72 @@ def test_password_hashing():
     assert user.check_password('wrongpass') is False
 
 
+# ------------------------------------------------------------------ #
+#  CSRF PROTECTION                                                     #
+# ------------------------------------------------------------------ #
+
+def test_csrf_rejects_post_without_token():
+    """POST to /login without a csrf_token returns 400 when CSRF is enabled."""
+
+    class TestConfigWithCsrf(Config):
+        TESTING = True
+        SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+        SECRET_KEY = 'test-secret-key'
+        WTF_CSRF_ENABLED = True
+
+    app = create_app(TestConfigWithCsrf)
+    with app.app_context():
+        db.create_all()
+
+    client = app.test_client()
+    resp = client.post('/login', data={
+        'email': 'test@example.com',
+        'password': 'pass123',
+    }, follow_redirects=False)
+
+    # Flask-WTF rejects missing CSRF token with 400 (BadRequest)
+    assert resp.status_code == 400
+
+
+def test_csrf_accepts_post_with_valid_token():
+    """POST to /login with a valid csrf_token succeeds when CSRF is enabled."""
+
+    class TestConfigWithCsrf(Config):
+        TESTING = True
+        SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+        SECRET_KEY = 'test-secret-key'
+        WTF_CSRF_ENABLED = True
+
+    app = create_app(TestConfigWithCsrf)
+    with app.app_context():
+        db.create_all()
+
+    client = app.test_client()
+
+    # GET the login page first to get a valid CSRF token
+    resp = client.get('/login')
+    assert resp.status_code == 200
+    html = resp.data.decode()
+
+    # Extract csrf_token from hidden input
+    import re as _re
+    match = _re.search(r'name="csrf_token" value="([^"]+)"', html)
+    assert match is not None, "No csrf_token found in login page HTML"
+    token = match.group(1)
+
+    # POST with the valid token
+    resp = client.post('/login', data={
+        'email': 'nonexistent@example.com',
+        'password': 'wrongpass',
+        'csrf_token': token,
+    }, follow_redirects=False)
+
+    # Should NOT get a CSRF error — it fails with invalid credentials instead
+    assert resp.status_code not in (400, 500), (
+        f'CSRF rejected valid token: {resp.status_code}'
+    )
+
+
 if __name__ == '__main__':
     import pytest
     pytest.main([__file__, '-v'])

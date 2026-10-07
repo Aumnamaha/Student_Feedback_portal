@@ -73,19 +73,23 @@
     <div class="status-actions">
         {% if feedback.status == 'Pending' %}
             <form method="POST" action="{{ url_for('faculty.update_status', fb_id=feedback.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" name="status" value="In Progress" class="btn-action btn-in-progress">Mark In Progress</button>
             </form>
         {% elif feedback.status == 'In Progress' %}
             <form method="POST" action="{{ url_for('faculty.update_status', fb_id=feedback.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" name="status" value="Resolved" class="btn-action btn-resolved">Mark Resolved</button>
             </form>
         {% elif feedback.status == 'Resolved' %}
             <!-- Verification section -->
             <span style="font-weight:600;color:#555;margin-right:0.5rem;">Verify Resolution:</span>
             <form method="POST" action="{{ url_for('faculty.verify_feedback', fb_id=feedback.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" name="action" value="success" class="btn-action btn-verify-success">✓ Verified/Closed</button>
             </form>
             <form method="POST" action="{{ url_for('faculty.verify_feedback', fb_id=feedback.id) }}" style="display:inline">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <button type="submit" name="action" value="failure" class="btn-action btn-verify-fail">✗ Verification Failed</button>
             </form>
         {% endif %}
@@ -105,6 +109,7 @@
 
         {% if can_comment and feedback.status not in ('Verified/Closed', 'Verification Failed') %}
         <form class="comment-form" id="comment-form-{{ feedback.id }}" onsubmit="return submitComment(event, {{ feedback.id }})">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <textarea name="text" placeholder="Add a comment to this feedback..." required></textarea>
             <button type="submit" class="btn-primary" style="align-self:flex-end">Post</button>
         </form>
@@ -134,9 +139,10 @@
         const text = textarea.value.trim();
         if (!text) return false;
 
+        const csrfToken = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
         fetch(`/faculty/feedback/${fbId}/comment`, {
             method: 'POST',
-            headers: {'Content-Type': 'application/json'},
+            headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
             body: JSON.stringify({text: text})
         })
         .then(r => r.json())

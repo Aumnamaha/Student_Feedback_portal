@@ -47,6 +47,7 @@
 
     <!-- Status update form -->
     <form method="POST" action="{{ url_for('admin.update_status', fb_id=feedback.id) }}" style="margin-bottom: 1.5rem;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <label for="status">Update Status:</label>
         <div style="display: flex; gap: 0.75rem; align-items: center;">
             <select id="status" name="status" required style="width: auto; min-width: 180px;">
@@ -118,9 +119,11 @@
     <div class="verify-actions">
         <span style="font-weight:600;color:#555;margin-right:0.5rem;">Admin Verification:</span>
         <form method="POST" action="{{ url_for('admin.verify_success', fb_id=feedback.id) }}" style="display:inline" onsubmit="return confirm('Mark this feedback as Verified/Closed?')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-verify-success">✓ Verified/Closed</button>
         </form>
         <form method="POST" action="{{ url_for('admin.verify_failure', fb_id=feedback.id) }}" style="display:inline" onsubmit="return confirm('Mark verification as Failed? Status will revert to In Progress and failed count will increment.')">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <button type="submit" class="btn-verify-fail">✗ Verification Failed</button>
         </form>
     </div>

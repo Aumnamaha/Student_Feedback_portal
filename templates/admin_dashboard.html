@@ -157,10 +157,12 @@
                         {% if fb.status == 'Resolved' %}
                             <!-- Verify Success -->
                             <form method="POST" action="{{ url_for('admin.verify_success', fb_id=fb.id) }}" style="display:inline" onsubmit="return confirm('Mark this feedback as Verified/Closed?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn-verify-success">✓ Verify</button>
                             </form>
                             <!-- Verify Failure -->
                             <form method="POST" action="{{ url_for('admin.verify_failure', fb_id=fb.id) }}" style="display:inline" onsubmit="return confirm('Mark verification as Failed? Status will revert to In Progress.')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                 <button type="submit" class="btn-verify-fail">✗ Fail</button>
                             </form>
                         {% else %}
