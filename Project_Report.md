@@ -68,7 +68,7 @@ Object-Oriented Software Engineering (OOSE) Lab
 
 The Student Feedback Management System is a web-based application designed to streamline the process of collecting, managing, and resolving student feedback regarding various aspects of campus life. Traditional paper-based or informal digital feedback mechanisms often suffer from issues such as data loss, lack of categorization, inability to track resolution status, and limited analytical capabilities. This project addresses these challenges by providing a structured, role-based platform where students can submit categorized feedback with ratings and optional anonymity, while administrators gain powerful tools for filtering, tracking, updating, and analyzing all incoming feedback.
 
-The system is built using the Flask microframework in Python for the backend, MySQL as the relational database management system, and vanilla HTML5/CSS3/JavaScript for the frontend. The application follows Object-Oriented Software Engineering (OOSE) principles throughout its design and implementation lifecycle. Two primary user roles — Student and Administrator — are supported with strict role-based access control ensuring that each user can only perform actions appropriate to their privileges. A critical security feature of this system is the enforcement of anonymous feedback privacy at the database query layer, not merely through UI-level hiding, ensuring that student identities remain protected even from administrative queries when anonymity is requested.
+The system is built using the Flask microframework in Python for the backend, MySQL as the relational database management system, and vanilla HTML5/CSS3/JavaScript for the frontend. The application follows Object-Oriented Software Engineering (OOSE) principles throughout its design and implementation lifecycle. Three user roles are supported — Student (submits feedback), Admin (manages all feedback, verifies resolutions, manages faculty accounts), and Faculty (reviews department-specific feedback, updates status, posts comments, and verifies resolved items) — with strict role-based access control ensuring that each user can only perform actions appropriate to their privileges. A critical security feature of this system is the enforcement of anonymous feedback privacy at the database query layer, not merely through UI-level hiding, ensuring that student identities remain protected even from administrative queries when anonymity is requested.
 
 The project encompasses the complete software development lifecycle — from requirement analysis and system design (including use case, class, sequence, activity, and ER diagrams) through implementation, testing, and documentation. The modular architecture using Flask blueprints ensures maintainability and scalability, while SQLAlchemy ORM provides clean object-relational mapping for database interactions. Testing was conducted manually across all user flows to verify functional correctness, security compliance, and usability.
 
@@ -149,9 +149,15 @@ The following specific objectives guide the design and implementation of the sys
 
 7. **Enforce Privacy Through Query-Level Anonymity**: Ensure that anonymous feedback submissions are handled with identity suppression at the database query layer — not merely through UI-level hiding — so that student identities remain protected even if templates or future features are modified without corresponding privacy updates.
 
-8. **Apply OOSE Principles**: Demonstrate practical application of object-oriented software engineering concepts including class design, encapsulation, modular architecture (blueprints), relationship management, and the complete software development lifecycle throughout the project.
+8. **Enable Faculty Review Workflow**: Allow faculty members to log in with department-specific access, view only feedback matching their department (excluding 5-star ratings), update status through Pending → In Progress → Resolved, post comments on feedback items, and verify resolved items as Verified/Closed or revert them to In Progress on failure.
 
-9. **Ensure Maintainability and Scalability**: Structure the codebase using Flask blueprints, separated models, organized templates, and a clean folder hierarchy to ensure that future developers can easily understand, extend, and maintain the system as requirements evolve.
+9. **Implement Comment Threads**: Support Reddit-style threaded discussions on each feedback item where matching faculty can post comments and submitting students can view read-only, with self-referencing parent IDs for nested replies.
+
+10. **Add Verification and Escalation Workflow**: Enable both admin and faculty to verify resolved feedback (Verified/Closed on success, revert to In Progress with failed counter increment on failure). Automatically pin overdue items as escalated and flag items exceeding the failed verification threshold.
+
+11. **Apply OOSE Principles**: Demonstrate practical application of object-oriented software engineering concepts including class design, encapsulation, modular architecture (blueprints), relationship management, and the complete software development lifecycle throughout the project.
+
+12. **Ensure Maintainability and Scalability**: Structure the codebase using Flask blueprints, separated models, organized templates, and a clean folder hierarchy to ensure that future developers can easily understand, extend, and maintain the system as requirements evolve.
 
 ---
 
@@ -215,7 +221,7 @@ The existing systems collectively fail to provide a comprehensive solution that 
 
 ## 5.1 Overview
 
-The Student Feedback Management System is a three-tier web application that provides end-to-end management of student feedback about campus life. Built using Flask (Python), MySQL, and vanilla frontend technologies, the system implements role-based access control with distinct interfaces for Students and Administrators. The architecture follows Object-Oriented Software Engineering principles, with modular code organization through Flask blueprints, clean database design using SQLAlchemy ORM, and separation of presentation, application, and data layers.
+The Student Feedback Management System is a three-tier web application that provides end-to-end management of student feedback about campus life. Built using Flask (Python) with MySQL or SQLite (fallback) databases, and vanilla frontend technologies, the system implements role-based access control with distinct interfaces for Students and Administrators. The architecture follows Object-Oriented Software Engineering principles, with modular code organization through Flask blueprints, clean database design using SQLAlchemy ORM, and separation of presentation, application, and data layers.
 
 ## 5.2 Key Features
 
@@ -229,31 +235,48 @@ The Student Feedback Management System is a three-tier web application that prov
 ### 5.2.2 Admin-Facing Features
 
 - **Admin Login**: Separate authentication path for administrators who are pre-seeded into the database via a dedicated seed script (`seed.py`). Admin accounts cannot be self-created — they must be provisioned by an existing administrator or developer.
+- **Faculty Account Management**: Admins can list all faculty accounts and create new ones with name, email, faculty ID, department, subject taught, and password. Faculty IDs are unique constraints preventing duplicate accounts.
 - **Master Feedback Dashboard**: A comprehensive table displaying all student feedback entries with columns for ID, submitter name (or "Anonymous"), category badge, rating stars, comment preview, status badge, and submission date. Supports multi-criteria filtering through a filter bar containing dropdown menus for category and status, a numeric input for minimum rating, date range pickers, and a keyword search text field.
 - **Individual Feedback Management**: Clicking on any feedback entry opens a detail view showing the complete comment (not just preview), submitter information (suppressed if anonymous), all metadata fields, and controls to update the status through the Pending → In Progress → Resolved workflow.
-- **Reports & Analytics Page**: Displays three primary visualizations: (a) Average rating per category shown as a horizontal bar chart with numerical values; (b) Feedback count distribution across categories displayed as a donut or pie chart; (c) Submission trend line graph showing weekly or monthly feedback volume over time, enabling identification of patterns and spikes.
+- **Verification Queue**: A dedicated Faculty Review section on the admin dashboard shows Resolved items awaiting verification. Admins can mark them Verified/Closed (success) or fail verification (reverts to In Progress with failed counter increment). Escalated items (Pinned + high-fail-count) are highlighted.
+- **Reports & Analytics Page**: Displays aggregated visualizations: average rating per category, feedback count distribution across categories and departments, monthly submission trends, resolution time metrics, and escalation counts.
 
-### 5.2.3 Security Features
+### 5.2.3 Faculty-Facing Features
+
+- **Faculty Login**: Faculty members authenticate using email and password. Accounts are seeded by admins (no self-registration) with department and subject_taught attributes that determine which feedback they can access.
+- **Department-Filtered Dashboard**: Displays only feedback from the faculty member's department, excluding 5-star ratings. Items are prioritized by subject match, pinned status, and escalation flags. Shows countdown timers for review deadlines.
+- **Status Transitions**: Faculty can update their assigned department's feedback through Pending → In Progress → Resolved, with automatic tracking of which faculty resolved each item (resolved_by_faculty_id).
+- **Comment Threads**: Matching faculty can post comments on any feedback in their department. Comments support nested replies via self-referencing parent IDs. Students viewing their own feedback see read-only comment threads.
+- **Resolution Verification**: Faculty can verify resolved items by marking them Verified/Closed (success) or reverting to In Progress with a failed verification counter increment (failure).
+
+### 5.2.4 Admin-Facing Faculty Management
 
 - **Password Hashing**: All passwords are hashed using werkzeug.security before storage. The hashing process includes automatic salt generation and uses bcrypt-compatible algorithms that are computationally expensive to reverse, protecting against database breach scenarios.
 - **Session Management**: Flask sessions use cryptographically signed cookies with an application-specific secret key. Session data (user ID, role) is stored server-side references while the cookie itself only contains a signature that cannot be tampered with without detection.
 - **Role-Based Access Control**: Decorator-based route protection (`@login_required`, `@admin_required`) ensures that students cannot access admin routes and vice versa. Every protected route checks session state before executing any logic.
-- **Anonymous Feedback Privacy**: Student identity suppression is enforced at the database query layer. When fetching feedback for display to administrators, the application explicitly checks the `is_anonymous` flag and replaces student name with "Anonymous" in the data passed to templates — not relying on CSS hiding or JavaScript manipulation which could be bypassed by inspecting page source.
+- **Anonymous Feedback Privacy**: Student identity suppression is enforced at the serialization layer. The `to_admin_dict()` method returns "Anonymous" for anonymous rows regardless of whether `self.author` is loaded; the `to_faculty_dict()` method only exposes class/year derived from roll number, never name/email/roll. Admin queries do not join the users table for anonymous feedback.
+- **CSRF Protection**: All POST forms include hidden CSRF tokens generated by Flask-WTF's CSRFProtect extension. AJAX comment submissions send the token via `X-CSRFToken` headers read from a `<meta>` tag in the base template layout.
 
 ## 5.3 System Workflow
 
-The system follows a clear linear workflow for each feedback item:
+The system follows a clear linear workflow for each feedback item, involving three roles:
 
-1. **Student registers** → Account created with hashed password in `users` table
+1. **Student registers** → Account created with hashed password in `users` table (role='student')
 2. **Student logs in** → Session established, redirected to student dashboard
-3. **Student submits feedback** → Record inserted into `feedback` table with current timestamp
-4. **Feedback is Pending by default** → Visible on admin dashboard immediately
-5. **Admin reviews and filters** → Admin applies criteria to find relevant items
-6. **Admin updates status** → Status changes through workflow, `updated_at` timestamp recorded
-7. **Student views progress** → Student can see updated status on their personal dashboard
-8. **Reports aggregate data** → Analytics computed from all feedback records for administrative review
+3. **Student submits feedback** → Record inserted into `feedback` table with status='Pending', current timestamp, and review_deadline set to 24h from now
+4. **Admin reviews and filters** → Admin applies multi-criteria filters on admin dashboard to find relevant items
+5. **Faculty reviews department feedback** → Matching faculty (by department) sees non-5-star items on their dashboard with subject-match highlighting
+6. **Status transitions** → Admin or faculty updates status: Pending → In Progress → Resolved; resolved_by_faculty_id recorded when faculty marks Resolved
+7. **Resolution verification** → Both admin and faculty can verify Resolved items: success → Verified/Closed, failure → In Progress with failed_verification_count incremented
+8. **Escalation of overdue items** → Items past review_deadline are automatically pinned; items with failed_verification_count >= 3 are flagged as escalated
+9. **Comment threads** → Matching faculty post comments on feedback items via AJAX; students view read-only
+10. **Student views progress** → Student can see updated status, countdown timers, and comment threads on their personal dashboard
+11. **Reports aggregate data** → Analytics computed from all feedback records for administrative review
 
-This workflow ensures that every piece of student feedback enters a managed lifecycle with clear accountability and traceability from submission to resolution.
+This workflow ensures that every piece of student feedback enters a managed lifecycle with clear accountability and traceability across three roles — submission by students, review/verification by faculty and admin, and monitoring by students.
+
+### Faculty Account Provisioning
+Faculty accounts are created exclusively by admins via the "Manage Faculty" page (`/admin/faculty/create`). Each account includes department and subject_taught assignments that determine which feedback items appear on their dashboard.
 
 ---
 
@@ -264,15 +287,18 @@ This workflow ensures that every piece of student feedback enters a managed life
 The following features are within the scope of this project implementation:
 
 - Student self-registration with roll number and email validation
-- Secure login/logout for both student and admin roles using session-based authentication
+- Multi-role login supporting students, admins, and faculty via a unified /login endpoint
+- Faculty account management: admins can list all faculty accounts and create new ones (no faculty self-registration)
 - Structured feedback submission with category, rating (1–5), comment text, and anonymity toggle
 - Student dashboard displaying personal feedback history with status tracking
 - Admin dashboard with full visibility of all feedback entries
 - Multi-criteria filtering on the admin dashboard (category, rating, status, date range)
 - Keyword search across feedback comments
-- Individual feedback detail view for admins
-- Status update workflow: Pending → In Progress → Resolved
-- Reports page with aggregated statistics (average ratings, counts per category, trends)
+- Faculty dashboard showing department-filtered feedback (excluding 5-star ratings) with subject-match highlighting and deadline countdowns
+- Comment threads on each feedback item — matching faculty can post; students view read-only with nested reply support
+- Resolution verification by both admin and faculty: Verified/Closed on success, revert to In Progress with failed counter increment on failure
+- Automatic escalation of overdue feedback (Pinned status) with escalation deadlines
+- Reports page with aggregated statistics (average ratings, counts per category/department, trends, escalation metrics)
 - Anonymous feedback handling enforced at the query layer
 - Responsive design suitable for desktop and mobile browsers
 - Local deployment on a development server
@@ -296,7 +322,8 @@ The following features are explicitly excluded from this project scope:
 | User Type | Description                                          | Expected Count |
 |-----------|------------------------------------------------------|----------------|
 | Students  | Enrolled students of the institution                 | 50–500 (typical class/section size) |
-| Admins    | Administrative staff responsible for campus operations | 1–5            |
+| Admins    | Administrative staff responsible for campus operations and faculty management | 1–5            |
+| Faculty   | Teaching staff who review department-specific feedback, update status, post comments, and verify resolutions | 10–50          |
 
 The system is designed to comfortably handle the expected user load with performance targets of dashboard loads within 2–3 seconds for hundreds of feedback records.
 
@@ -381,10 +408,64 @@ Authenticated administrators shall be able to access a reports page that display
 
 ## FR-11: Logout
 
-Both students and administrators shall be able to log out of the system. Upon logout, the server-side session shall be destroyed (all session variables cleared), and the user shall be redirected to the login page (`/login`).
+Both students, administrators, and faculty members shall be able to log out of the system. Upon logout, the server-side session shall be destroyed (all session variables cleared), and the user shall be redirected to the login page (`/login`).
 
 **Input**: Click "Logout" action  
 **Output**: Session cleared; redirect to `/login`; flash confirmation message
+
+## FR-12: Faculty Login
+
+The system shall allow faculty members to log in using their email address and password. Unlike students, faculty accounts cannot be self-created through the registration page — they must be provisioned by an admin via the "Manage Faculty" page (`/admin/faculty/create`). Upon successful authentication, a session is created with role='faculty' and the faculty member's ID, redirecting to the faculty dashboard (`/faculty/dashboard`).
+
+**Input**: email (must match a faculty account), password  
+**Output**: Session established with `faculty_id`; redirect to `/faculty/dashboard` on success; flash error message on failure
+
+## FR-13: Faculty Department-Filtered Dashboard
+
+Authenticated faculty shall see only feedback entries that satisfy all of the following conditions:
+- The feedback's `department` matches the logged-in faculty member's `department`.
+- The feedback's `rating` is not 5 (5-star ratings never reach faculty).
+When displaying results, student PII must be suppressed — only class and year derived from roll_number are shown (never name, email, or roll_number itself). Items matching the faculty's subject_taught are prioritized first.
+
+**Input**: None (data filtered server-side based on session `faculty_id`)  
+**Output**: HTML table of department-matching feedback with anonymized student info, status badges, countdown timers, and escalation indicators
+
+## FR-14: Faculty Status Update
+
+Authenticated faculty shall be able to update the status of feedback items in their department through the workflow: Pending → In Progress → Resolved. When marking as Resolved, the system records `resolved_by_faculty_id` linking back to the faculty account. Each status change is timestamped.
+
+**Input**: feedback_id (from URL), new_status (ENUM value)  
+**Output**: Updated `status`, `updated_at`, and optionally `resolved_by_faculty_id`; flash confirmation; redirect to detail page
+
+## FR-15: Comment Threads on Feedback
+
+Matching faculty (those whose department matches the feedback's department) shall be able to post comments on any feedback item in their department. Students can view comment threads read-only on their own submitted feedback. Comments support nested replies via self-referencing `parent_id`. AJAX-based posting sends JSON with CSRF headers.
+
+**Input**: feedback_id, text (via POST form or JSON), optional parent_id for replies  
+**Output**: New Comment record inserted; real-time display of appended comment in thread
+
+## FR-16: Resolution Verification (Admin and Faculty)
+
+Both admin and faculty shall be able to verify resolved feedback items via two actions:
+- **Verify Success**: Transitions status from 'Resolved' → 'Verified/Closed'. Only allowed when current status is 'Resolved'.
+- **Verify Failure**: Transitions status from 'Resolved' → 'In Progress', increments `failed_verification_count` by 1. Only allowed when current status is 'Resolved'.
+
+**Input**: feedback_id, action ('success' or 'failure')  
+**Output**: Status updated per verification outcome; failed counter incremented on failure; flash message confirming result
+
+## FR-17: Escalation of Overdue Feedback
+
+The system shall automatically escalate overdue feedback by setting `status = 'Pinned'` and computing an `escalation_deadline` (3 days from detection). This occurs on each faculty dashboard load. Items are also escalated when `failed_verification_count >= 3`. Escalated items display prominently on both admin and faculty dashboards with warning badges.
+
+**Input**: None (automatic, triggered on dashboard loads)  
+**Output**: Status changed to 'Pinned'; escalation_deadline set; visual escalation badge shown
+
+## FR-18: Admin Faculty Account Management
+
+Admins shall be able to list all existing faculty accounts and create new ones. Creating a faculty account requires name, email, unique faculty_id, department, subject_taught, password (min 6 chars), and confirm_password. Duplicate email or faculty_id checks prevent conflicting accounts.
+
+**Input**: GET `/admin/faculty` → list; POST `/admin/faculty/create` → create  
+**Output**: Table of all faculty accounts; on creation, new Faculty record with hashed password; flash confirmation
 
 ---
 
@@ -402,9 +483,9 @@ The user interface shall be clean, simple, and intuitive enough that a first-tim
 
 ## NFR-02: Performance
 
-The admin dashboard shall load within 2–3 seconds when displaying up to 500 feedback records on a standard development machine. This performance target is achievable through database indexing on frequently queried columns (`category`, `status`, `created_at`), efficient SQLAlchemy query construction that avoids N+1 query patterns by using eager loading for the user relationship, and minimal server-side processing overhead in route handlers.
+The system shall provide responsive interactions under expected usage conditions. Dashboard pages, feedback detail views, and report computations should complete within a reasonable timeframe on standard development hardware (Flask debug server with SQLite or local MySQL).
 
-**Acceptance Criteria**: Admin dashboard page load time ≤ 3 seconds with 500 records under local development server conditions. Student dashboard page load time ≤ 2 seconds for up to 100 personal feedback entries. Report page computation time ≤ 2 seconds for any dataset size through optimized SQL aggregate queries.
+**Acceptance Criteria**: The author is to measure actual page load times and computation durations during testing and record them in the Results chapter. Performance figures reported in Chapter 19 shall reflect measured values rather than targets, since no formal indexing strategy (beyond primary keys) or eager loading optimization has been implemented in the current codebase.
 
 ## NFR-03: Security
 
@@ -416,7 +497,11 @@ The system shall implement multiple layers of security protection:
 
 **Role-Based Access Control**: All admin-specific routes shall be protected by a decorator that verifies the user's session role equals 'admin'. Student-specific routes shall verify role equals 'student' (or simply require authentication). Unauthorized access attempts shall redirect to the login page with an appropriate flash message.
 
-**Anonymous Feedback Privacy**: When `is_anonymous=True`, student identity suppression must occur at the database query layer — specifically in the Python code that constructs data for admin-facing views, not merely through CSS hiding or JavaScript manipulation in templates. This ensures that even if a future template modification accidentally exposes hidden fields, the underlying data passed to the template will already have the student name replaced with "Anonymous".
+**Anonymous Feedback Privacy**: When `is_anonymous=True`, student identity suppression must occur at the serialization layer — specifically in the `to_admin_dict()` method which returns "Anonymous" for anonymous rows regardless of whether `self.author` is loaded. For faculty views, only class/year derived from roll_number is exposed (never name/email/roll). Admin queries do not eagerly load the users table for anonymous feedback.
+
+**CSRF Protection**: All POST forms include hidden CSRF tokens generated by Flask-WTF's `CSRFProtect`. AJAX comment submissions send the token via `X-CSRFToken` headers read from a `<meta name="csrf-token">` tag in `base.html`. During testing, CSRF is disabled via `WTF_CSRF_ENABLED = False` in test configs.
+
+**SECRET_KEY Enforcement**: In production (DEBUG=False), the application refuses to start if SECRET_KEY is not set via the environment variable — preventing accidental deployment with a default dev key.
 
 **SQL Injection Prevention**: All database queries shall use SQLAlchemy ORM parameterized queries rather than raw SQL string concatenation, eliminating the risk of SQL injection attacks through user-supplied input.
 
@@ -474,16 +559,15 @@ The Student Feedback Management System follows a three-tier architectural patter
 │  ┌─────────────────────────────────────────────────────┐  │
 │  │                  Flask Application                   │  │
 │  │                                                      │  │
-│  │  ┌──────────┐  ┌──────────┐  ┌──────────────────┐   │  │
-│  │  │ auth_bp  │  │student_bp│  │    admin_bp      │   │  │
-│  │  │(Routes:  │  │(Routes:  │  │(Routes:           │   │  │
-│  │  │ login,   │  │ submit,  │  │ dashboard,        │   │  │
-│  │  │ register│  │ history) │  │ update_status,    │   │  │
-│  │  │ logout)  │  │          │  │ reports)          │   │  │
-│  │  └──────────┘  └──────────┘  └──────────────────┘   │  │
+│  │  ┌──────────┐  ┌──────────┐  ┌───────────────┐  ┌───────────────┐  │  │
+│  │  │ auth_bp  │  │student_bp│  │    admin_bp   │  │  faculty_bp   │  │  │
+
+│  │  └──────────┘  └──────────┘  └───────────────┘  └───────────────┘  │  │
 │  │                                                      │  │
-│  │  Decorators: @login_required, @admin_required        │  │
-│  │  Session Management, Input Validation, Business Rules │  │
+│  │  Decorators: @login_required, @admin_required,       │  │
+│  │              @faculty_required                       │  │
+│  │  CSRFProtect (Flask-WTF), Session Mgmt,              │  │
+│  │  Input Validation, Business Rules                    │  │
 │  └─────────────────────────────────────────────────────┘  │
 └────────────────────────────┬──────────────────────────────┘
                              │ SQLAlchemy ORM Queries
@@ -492,8 +576,10 @@ The Student Feedback Management System follows a three-tier architectural patter
 │  ┌─────────────────────────────────────────────────────┐  │
 │  │              SQLAlchemy ORM Models                   │  │
 │  │                                                      │  │
-│  │  User Model    → maps to   users table               │  │
-│  │  Feedback Model→ maps to   feedback table            │  │
+│  │  User Model      → maps to   users table             │  │
+│  │  Faculty Model   → maps to   faculty table           │  │
+│  │  Feedback Model  → maps to   feedback table          │  │
+│  │  Comment Model   → maps to   comment table           │  │
 │  └─────────────────────────────────────────────────────┘  │
 │                            │                               │
 │                    MySQL Database Server                   │
@@ -530,7 +616,7 @@ The application layer contains all business logic — the rules, validations, an
 - Business rule enforcement: Anonymous feedback identity suppression at query layer; status workflow progression rules (Pending → In Progress → Resolved)
 - Data transformation: Converting raw database records into view-ready structures (e.g., replacing student names with "Anonymous" for anonymous entries)
 
-**Blueprints**: `auth_bp` (authentication routes), `student_bp` (student dashboard and feedback submission), `admin_bp` (admin dashboard, filtering, status updates, reports).
+**Blueprints**: `blueprints/auth/routes.py` (authentication routes), `blueprints/student/__init__.py` (student dashboard and feedback submission), `blueprints/admin/__init__.py` (admin dashboard, filtering, status updates, verification, faculty management, reports), `blueprints/faculty/routes.py` (faculty dashboard, review, comments, status transitions, resolution verification).
 
 ### Data Layer (Tier 3)
 
@@ -542,7 +628,7 @@ The data layer manages all interactions with the persistent storage system — i
 - Transaction management: Ensuring data integrity through commit/rollback operations on session boundaries
 - Relationship navigation: Enabling bidirectional access between related objects (`user.feedback_entries`, `feedback.user`)
 
-**Models**: `User` model (attributes: id, name, email, roll_number, password_hash, role, created_at) with relationship to Feedback; `Feedback` model (attributes: id, student_id, category, rating, comment, is_anonymous, status, created_at, updated_at) with backref to User.
+**Models**: `User` model (id, name, email, roll_number, password_hash, role, created_at) — students and admins; `Faculty` model (id, name, email, faculty_id, department, subject_taught, password_hash, role, created_at) — admin-seeded only; `Feedback` model (id, student_id, category, rating, comment, is_anonymous, status, department, subject, semester_year, resolved_by_faculty_id, review_deadline, escalation_deadline, failed_verification_count, created_at, updated_at) with verification methods (`verify_success`, `verify_failure`) and PII-safe serialization (`to_faculty_dict`, `to_admin_dict`); `Comment` model (id, feedback_id, parent_id, author_type, author_id, text, created_at) — self-referencing for nested replies.
 
 ## 9.3 Design Patterns Used
 
@@ -554,9 +640,10 @@ The `create_app()` function in `app.py` serves as the application factory — a 
 
 ### Blueprint Pattern
 Flask Blueprints provide a mechanism to organize routes into modular, reusable units. Each blueprint encapsulates all routes and handlers related to a specific domain:
-- `auth_bp`: All authentication-related routes (register, login, logout)
-- `student_bp`: Student-facing functionality (submit feedback, view history)
-- `admin_bp`: Admin-only operations (dashboard with filters, status management, reports)
+- `blueprints/auth/routes.py`: All authentication-related routes (register, login, logout) supporting three roles.
+- `blueprints/student/__init__.py`: Student-facing functionality (submit feedback, view history).
+- `blueprints/admin/__init__.py`: Admin-only operations (dashboard with filters, status management, verification actions, faculty account management, reports).
+- `blueprints/faculty/routes.py`: Faculty operations (department-filtered dashboard, comment threads, status transitions, resolution verification, automatic escalation of overdue items).
 
 ### Decorator Pattern for Access Control
 Custom decorators (`@login_required`, `@admin_required`) wrap route handler functions to enforce authentication and authorization checks before the actual business logic executes. This eliminates code duplication across routes and centralizes access control logic.
@@ -570,8 +657,9 @@ Custom decorators (`@login_required`, `@admin_required`) wrap route handler func
 The use case diagram illustrates the interactions between actors (users) and system functionalities (use cases). There are two primary actors in this system: **Student** and **Admin**. A tertiary implicit actor is the **Database**, which stores and retrieves data as needed by the system.
 
 ### Actors
-1. **Student**: An enrolled student who can register, login, submit feedback, view their own feedback history, and logout.
-2. **Admin**: An administrative staff member who can login (separate from student login), view all feedback with filtering capabilities, update feedback status, generate reports, and logout.
+1. **Student**: An enrolled student who can register, login, submit feedback, view their own feedback history, read comment threads on their submissions, and logout.
+2. **Admin**: An administrative staff member who can login, view all feedback with filtering capabilities, update feedback status, verify resolved items (Verified/Closed or fail), manage faculty accounts, generate reports, and logout.
+3. **Faculty**: A teaching staff member who logs in to review department-specific feedback (excluding 5-star ratings), update status through the workflow, post comments on feedback items, verify resolved resolutions, and logout. Faculty accounts are created by admins only — no self-registration.
 
 ### Use Cases for Student Actor
 - **Register**: Create a new account using name, roll number, email, and password. This use case is exclusive to students — admin accounts cannot be self-created.
@@ -589,6 +677,14 @@ The use case diagram illustrates the interactions between actors (users) and sys
 - **Update Feedback Status**: Change the status of a feedback entry through the defined workflow: Pending → In Progress → Resolved, with automatic timestamp recording.
 - **View Reports**: Access an aggregated analytics page displaying average ratings per category, feedback counts by category, and temporal submission trends.
 - **Logout**: Terminate the admin session and return to the login page.
+- **Manage Faculty Accounts**: List all faculty accounts; create new ones with department, subject_taught assignment, and password.
+
+### Use Cases for Faculty Actor
+- **Login (Faculty)**: Authenticate using faculty email and password. Restricted to accounts provisioned by admins. Redirects to `/faculty/dashboard` on success.
+- **View Department Feedback**: Access a table of feedback matching their department with rating != 5. Items are prioritized by subject match, pinned status, and escalation flags. Student PII is never shown — only class/year derived from roll number.
+- **Update Feedback Status**: Change the status of feedback in their department through Pending → In Progress → Resolved, with resolved_by_faculty_id tracked.
+- **Post Comments**: Add comments to any feedback item in their department via AJAX (JSON POST with CSRF headers). Supports nested replies.
+- **Verify Resolution**: When viewing a Resolved item, mark it Verified/Closed or fail verification (reverts to In Progress, increments failed_verification_count).
 
 ### Relationships
 - **Includes**: "Submit Feedback" includes validation of all input fields (category selection required, rating 1–5 range enforced, comment text validated).
@@ -605,7 +701,8 @@ The use case diagram illustrates the interactions between actors (users) and sys
          Feedback)─────┤
                         │
 [Student] ──(View Own   │
-         Feedback)─────┤
+         Feedback +     │
+         Comments)─────┤
                         │
 [Student] ──(Logout)───┘
 
@@ -626,9 +723,30 @@ The use case diagram illustrates the interactions between actors (users) and sys
 [Admin]  ──(Update Status│
            of Feedback)──┤
                           │
+[Admin]  ──(Verify        │
+           Resolution)───┤   (Verified/Closed or fail)
+                          │
+[Admin]  ──(Manage        │
+           Faculty)──────┤
+                          │
 [Admin]  ──(View Reports)│
                           │
 [Admin]  ──(Logout)──────┘
+
+[Faculty] ──(Login Faculty)──┐
+                             ├──> [System: Student Feedback Management]
+[Faculty] ──(View Dept       │
+             Feedback)──────┤   (department-filtered, rating≠5)
+                             │
+[Faculty] ──(Update Status  │
+             of Feedback)───┤   (Pending→In Progress→Resolved)
+                             │
+[Faculty] ──(Post Comments)─┤   (AJAX, nested replies supported)
+                             │
+[Faculty] ──(Verify          │
+             Resolution)────┤   (Verified/Closed or fail)
+                             │
+[Faculty] ──(Logout)────────┘
 
 <<include>> Submit Feedback → Validate Inputs
 <<extend>> Filter Feedback → View All Feedback
@@ -641,7 +759,7 @@ The use case diagram illustrates the interactions between actors (users) and sys
 
 ## 11.1 Textual Description for Diagram Generation
 
-The class diagram defines the static structure of the system's object model — the classes, their attributes, methods, and relationships. In this project, two primary classes are defined as SQLAlchemy ORM models: `User` and `Feedback`. These classes encapsulate both data (attributes mapped to database columns) and behavior (methods for validation, relationship navigation, and string representation).
+The class diagram defines the static structure of the system's object model — four classes are defined as SQLAlchemy ORM models in `models.py`: `User`, `Faculty`, `Feedback`, and `Comment`. These classes encapsulate both data (attributes mapped to database columns) and behavior (methods for validation, relationship navigation, verification lifecycle, and PII-safe serialization).
 
 ### Class: User
 
@@ -682,7 +800,51 @@ The class diagram defines the static structure of the system's object model — 
 - `get_feedback_entries()`: SQLAlchemy relationship method that returns all Feedback objects associated with this user (one-to-many navigation from User to Feedback).
 - `__repr__()`: Python string representation for debugging, returning a formatted string like `<User 1: student_name>`.
 
-### Class: Feedback
+### Class: Faculty
+
+```
+┌─────────────────────────────────────┐
+│             Faculty                 │
+├─────────────────────────────────────┤
+│ - id: int (PK, AUTO_INCREMENT)     │
+│ - name: str                          │
+│ - email: str (UNIQUE)               │
+│ - faculty_id: str (UNIQUE)          │
+│ - department: str                    │
+│ - subject_taught: str                │
+│ - password_hash: str                │
+│ - role: str ('faculty')             │
+│ - created_at: datetime              │
+├─────────────────────────────────────┤
+│ + __init__(...)                      │
+│ + set_password(raw_password): void  │
+│ + check_password(raw_password): bool│
+│ + get_resolved_feedback(): list     │
+│ + __repr__(): str                    │
+└─────────────────────────────────────┘
+         │
+         │ 1
+         │
+         │ many
+```
+
+**Attributes**:
+- `id`: Primary key, auto-incremented integer.
+- `name`: Full name of the faculty member.
+- `email`: Email address used for authentication, unique across all accounts.
+- `faculty_id`: Unique faculty identifier (e.g., "FAC-001"), set by admin during account creation.
+- `department`: Department assignment (e.g., "Computer Science") determining which feedback the faculty can view.
+- `subject_taught`: Subject(s) taught, used to prioritize matching feedback items on the dashboard.
+- `password_hash`: Bcrypt/PBKDF2-hashed password generated by werkzeug.security.
+- `role`: Always 'faculty'.
+- `created_at`: Account creation timestamp.
+
+**Methods**:
+- `set_password(raw_password)`: Hashes and stores the plaintext password using werkzeug.security.generate_password_hash().
+- `check_password(raw_password)`: Verifies a provided password against the stored hash using check_password_hash(). Returns boolean.
+- `get_resolved_feedback()`: SQLAlchemy relationship returning all Feedback objects where this faculty is the resolver (resolved_by_faculty_id).
+
+### Class: Comment
 
 ```
 ┌─────────────────────────────────────┐
@@ -722,16 +884,21 @@ The class diagram defines the static structure of the system's object model — 
 - `updated_at`: Timestamp of the most recent status change, updated automatically whenever admin modifies the status field.
 
 **Methods**:
-- `get_status_badge_class()`: Returns a CSS class string corresponding to the current status for visual rendering — 'warning' or 'bg-warning' for Pending, 'info' or 'bg-info' for In Progress, 'success' or 'bg-success' for Resolved. Enables color-coded badges in templates.
-- `get_rating_stars()`: Generates an HTML string of star symbols (filled and empty) based on the rating value — e.g., rating 4 produces ★★★★☆. Used for visual star display in templates.
+- `verify_success()`: Transitions status from 'Resolved' → 'Verified/Closed'. Raises ValueError if current status is not 'Resolved'. Called by both admin and faculty verification actions.
+- `verify_failure()`: Transitions status from 'Resolved' → 'In Progress', increments failed_verification_count by 1. Raises ValueError if current status is not 'Resolved'. Implements the failed-verification loop that can trigger escalation when count reaches 3.
+- `to_faculty_dict(faculty_subject)`: Returns an anonymized dict safe for faculty views — includes class/year derived from roll_number (never name/email/roll), subject match flag, escalation flags. Never joins users table.
+- `to_admin_dict()`: Returns a dict for admin views — attaches student PII only when is_anonymous=False; otherwise returns "Anonymous" for all identity fields.
 - `__repr__()`: Python string representation returning formatted string like `<Feedback 1: Food(4/5)>`.
 
 ### Class Relationships
 
 | Relationship | Type | Description |
 |---|---|---|
-| User → Feedback | One-to-Many | A single user can submit multiple feedback entries. Implemented via `db.relationship('Feedback', backref='user')` on the User model and `db.ForeignKey('users.id')` on the Feedback model's `student_id`. |
-| User.password_hash | Encapsulation | Password hashing is encapsulated within the User class through werkzeug.security methods — external code never accesses or manipulates raw passwords. |
+| User → Feedback | One-to-Many | A single user can submit multiple feedback entries. Implemented via `db.relationship('Feedback', backref='author')` on the User model and `db.ForeignKey('users.id')` on the Feedback model's `student_id`. |
+| Faculty → Feedback (resolved) | One-to-Many | A faculty member can resolve multiple feedback items. Implemented via `db.relationship('Feedback', backref='resolver', foreign_keys='Feedback.resolved_by_faculty_id')` and `db.ForeignKey('faculty.id')` on the Feedback model's `resolved_by_faculty_id`. |
+| Comment → Feedback | Many-to-One | Each comment belongs to exactly one feedback item. FK: `feedback_id` → `feedback.id`. |
+| Comment → Comment (self-ref) | One-to-Many (nested replies) | A parent comment can have many child reply comments. Self-referencing FK: `parent_id` → `comment.id`. Enables Reddit-style threaded discussions. |
+| User/Faculty.password_hash | Encapsulation | Password hashing is encapsulated within both User and Faculty classes through werkzeug.security methods — external code never accesses or manipulates raw passwords. |
 
 ### Cardinality Notation (for diagram generation)
 - **User** ────(1)────◆────(Many)──── **Feedback**
@@ -742,67 +909,96 @@ The class diagram defines the static structure of the system's object model — 
 
 # Chapter 12: Sequence Diagrams
 
-## 12.1 Sequence for "Submit Feedback"
+## 12.1 Sequence for "Submit Feedback" (Student)
 
-This sequence diagram describes the interaction flow when an authenticated student submits a new feedback entry through the web application. The interaction spans multiple system components from the user's browser to the database and back.
-
-### Participants (from left to right):
-1. **Student** — The end-user initiating the action via their web browser
-2. **Frontend (HTML/JS)** — The student dashboard page with the feedback submission form
-3. **Flask Route Handler** (`student_bp.submit_feedback`) — Server-side Python function processing the POST request
-4. **ORM Model** (`Feedback` class) — SQLAlchemy object representing the new feedback record
-5. **Database Session** (`db.session`) — Transaction manager handling commit/rollback
-6. **MySQL Database** — Persistent storage system
+This sequence diagram describes the interaction flow when an authenticated student submits a new feedback entry through `blueprints/student/__init__.py`. The interaction spans multiple system components from the user's browser to the database and back.
 
 ### Sequence Steps:
 
 ```
-Student → Frontend: Click "Submit Feedback" button on dashboard form
-Frontend → Student: Form data validated client-side (required fields, rating range)
-Frontend → Flask Route Handler: HTTP POST request to /dashboard/submit with form data
-                                (category, rating, comment, is_anonymous checkbox state)
+Student → Frontend: Click "Submit Feedback" button on student_dashboard.html form
+Frontend → Student: Client-side validation (required fields, rating 1-5)
+Frontend → Flask Route Handler: HTTP POST to /dashboard with form data
+                                (category, rating, comment, anonymous checkbox,
+                                 department, subject, semester_year — conditional)
 
-Flask Route Handler → Flask Route Handler: Verify session['user_id'] exists (authentication check)
-Flask Route Handler → Database Session: Create new Feedback object
-                                    student_id=session['user_id']
-                                    category=request.form['category']
-                                    rating=int(request.form['rating'])
-                                    comment=request.form['comment']
-                                    is_anonymous=(checkbox == 'on')
+Flask Route Handler → Flask Route Handler: Verify session['user_id'] exists (@login_required decorator)
+Flask Route Handler → ORM Model: Create Feedback object
+                                    student_id=session['user_id'],
+                                    category=request.form['category'],
+                                    rating=int(request.form['rating']),
+                                    comment=request.form['comment'],
+                                    is_anonymous=(checkbox == 'on'),
+                                    department/subject/semester_year (for Faculty/Food cats),
+                                    review_deadline=datetime.now(UTC) + 24h
 
-Database Session → MySQL Database: INSERT INTO feedback VALUES (...)
-MySQL Database → Database Session: Confirmation of successful insert (row ID assigned)
+ORM Model → Database Session: db.session.add(feedback_obj)
+Database Session → MySQL/SQLite: INSERT INTO feedback VALUES (...)
+MySQL/SQLite → Database Session: Confirmation of insert (row ID assigned)
 Database Session → Flask Route Handler: db.session.commit() returns success
 Flask Route Handler → Frontend: Redirect to /dashboard with flash message "Feedback submitted successfully!"
-Frontend → Student: Display updated dashboard showing new feedback entry in history table
+Frontend → Student: Display updated dashboard showing new entry in history table
 ```
 
 ### Alternative Flow (Validation Failure):
 If any validation fails (e.g., rating outside 1–5, missing required fields), the Flask route handler returns an error response with appropriate flash messages, and the frontend displays the errors without committing to the database.
 
-## 12.2 Sequence for "Admin Login"
+## 12.2 Sequence for "Faculty Login and Dashboard Load"
+
+This sequence shows multi-role authentication followed by the faculty dashboard loading with department filtering, automatic escalation check, and PII-safe serialization.
+
+### Participants:
+1. **Faculty** — End-user via web browser
+2. **Frontend (login.html)** — Multi-role login form with CSRF token
+3. **Flask Route Handler** (`blueprints/auth/routes.py::login`) — Tries User first, then Faculty on mismatch
+4. **ORM Model** (`Faculty` class in `models.py`) — Department/subject lookup
+5. **Flask Route Handler** (`blueprints/faculty/routes.py::dashboard`) — Department filtering, escalation check
+6. **ORM Model** (`Feedback.faculty_query()`, `to_faculty_dict()`) — PII-safe query and serialization
+7. **Database Session / MySQL-SQLite** — Persistent storage
+
+### Sequence Steps:
 
 ```
-Admin → Frontend: Enter email and password on /login page; click "Login"
-Frontend → Flask Route Handler (auth_bp.login): HTTP POST with credentials
-Flask Route Handler → ORM Model (User): Query users table WHERE email = submitted_email
-ORM Model → MySQL Database: SELECT * FROM users WHERE email = ?
-MySQL Database → ORM Model: Return matching User record (or None if not found)
+Faculty → Frontend: Enter email and password on /login; click Login (CSRF token included)
+Frontend → Flask Route Handler (auth/routes.py::login): HTTP POST with credentials + csrf_token
 
-alt User Found
-    ORM Model → Flask Route Handler: Pass user.password_hash to check_password_hash()
-    Flask Route Handler → Flask Route Handler: Compare hashes — match confirmed
-    Flask Route Handler → Frontend: Set session['user_id'], session['role']='admin', session['name']
-    Frontend → Admin: Redirect to /admin/dashboard with success flash message
-else User Not Found or Password Mismatch
-    Flask Route Handler → Frontend: Flash error "Invalid credentials" (does not specify which field was wrong)
-    Frontend → Admin: Stay on login page with error message displayed
+alt Credential matches User table
+    ORM Model (User): SELECT * FROM users WHERE email = ?
+    Check password_hash match via werkzeug.check_password_hash()
+    Set session['user_id'], session['role']='student'/'admin'
+    Redirect based on role → /dashboard or /admin/dashboard
+else Credential matches Faculty table
+    ORM Model (Faculty): SELECT * FROM faculty WHERE email = ?
+    Check password_hash match via werkzeug.check_password_hash()
+    Set session['faculty_id'], session['role']='faculty', session['name']
+    Redirect to /faculty/dashboard
+else No match in either table
+    Flash "Invalid credentials" (non-specific, prevents enumeration)
+    Stay on login page
+
+────────── Faculty Dashboard Load ──────────
+
+Faculty → Frontend: GET /faculty/dashboard
+Frontend → Flask Route Handler (faculty/routes.py::dashboard): @login_required + @faculty_required
+
+Flask Route Handler → ORM Model: g.faculty = db.session.get(Faculty, session['faculty_id'])
+Flask Route Handler → Flask Route Handler: _check_and_escalate() — find overdue items in faculty's department
+                                          where review_deadline passed and escalation_deadline is null.
+                                          Set status='Pinned', escalation_deadline=now+3 days for each.
+
+Flask Route Handler → ORM Model: Feedback.faculty_query(session, department=faculty.department, subject=faculty.subject_taught)
+                                  Filters: rating != 5, department match
+                                  Orders by: subject_match DESC, created_at DESC (or pinned first if no subject filter)
+
+ORM Model → Database Session: SELECT * FROM feedback WHERE department=? AND rating!=5 ORDER BY ...
+Database Session → MySQL/SQLite: Return matching rows
+ORM Model → Flask Route Handler: [fb.to_faculty_dict(faculty_subject=faculty.subject_taught) for fb in results]
+                                  Each dict: id, category, rating, comment, status, class/year from roll_number,
+                                  subject_match flag, is_escalated flag. NO PII exposed.
+
+Flask Route Handler → Frontend: Render faculty_dashboard.html with feedback_list, pending_count, escalated_count
+Frontend → Faculty: Display department table with stats cards, countdown timers, escalation badges
 ```
-
-## 12.3 Sequence for "Admin Update Feedback Status"
-
-```
-Admin → Frontend: Click on a feedback entry in admin dashboard table
 Frontend → Flask Route Handler (admin_bp.update_feedback_status): HTTP GET to /admin/feedback/<id>
 Flask Route Handler → ORM Model (Feedback): Query feedback by id using get_or_404()
 ORM Model → MySQL Database: SELECT * FROM feedback WHERE id = ?
@@ -819,9 +1015,48 @@ Flask Route Handler → ORM Model: feedback.status = new_status
 ORM Model → MySQL Database: UPDATE feedback SET status=?, updated_at=NOW() WHERE id=?
 MySQL Database → ORM Model: Confirmation of update
 
-ORM Model → Flask Route Handler: db.session.commit() returns success
-Flask Route Handler → Frontend: Flash message "Feedback status updated to [new_status]"
-Frontend → Admin: Redirect back to admin dashboard; table now shows updated status badge
+### Comment Posting Sequence (AJAX):
+
+```
+Faculty/Student → Frontend: Type comment in textarea; click Post
+Frontend → JavaScript (comments.js / inline script): Read CSRF token from <meta name="csrf-token">
+Frontend → Flask Route Handler: HTTP POST to /faculty/feedback/<id>/comment with JSON body
+                                {"text": "...", X-CSRFToken: csrf_token}
+
+Flask Route Handler → Flask Route Handler: Verify session['role']=='faculty' AND fb.department == faculty.department
+ORM Model (Comment): Create new Comment(feedback_id=id, author_type='faculty', author_id=faculty.id, text=text)
+ORM Model → Database Session: db.session.add(comment); db.session.commit()
+Database Session → MySQL/SQLite: INSERT INTO comment VALUES (...)
+
+alt JSON request (AJAX)
+    Flask Route Handler → Frontend: 201 {"id": N, "text": "...", "created_at": "..."}
+    Frontend → JavaScript: Append comment div to .comment-thread element
+else Form POST (non-AJAX)
+    Flask Route Handler → Frontend: Flash message + redirect
+```
+
+### Verification Sequence (Admin or Faculty):
+
+```
+Admin/Faculty → Frontend: Click "✓ Verify" or "✗ Fail" on a Resolved feedback item
+Frontend → Flask Route Handler: HTTP POST to /admin/feedback/<id>/verify-success 
+                                OR /faculty/feedback/<id>/verify with action='success'/'failure' + csrf_token
+
+Flask Route Handler → ORM Model (Feedback): fb = db.session.get(Feedback, id)
+                                             Verify status == 'Resolved' before calling verify methods
+
+alt Action = 'success'
+    ORM Model: fb.verify_success() → sets status = 'Verified/Closed'
+else Action = 'failure'
+    ORM Model: fb.verify_failure() → increments failed_verification_count + 1,
+                                                sets status = 'In Progress'
+                                             (If count >= 3, item is escalated)
+
+ORM Model → Database Session: db.session.commit()
+Database Session → MySQL/SQLite: UPDATE feedback SET status=?, failed_verification_count=? WHERE id=?
+
+Flask Route Handler → Frontend: Flash message confirming outcome
+Frontend → Admin/Faculty: Redirect back to detail page; updated status badge shown
 ```
 
 ---
@@ -1003,7 +1238,7 @@ This activity diagram describes the state transitions that a feedback entry unde
 
 ## 14.1 Textual Description for Diagram Generation
 
-The Entity-Relationship (ER) diagram models the logical structure of the database, showing entities (tables), their attributes (columns), primary keys, foreign keys, and relationships between entities. This project's database consists of two core entities with a one-to-many relationship.
+The Entity-Relationship (ER) diagram models the logical structure of the database, showing four core entities (tables), their attributes (columns), primary keys, foreign keys, and relationships between entities. This project's database consists of four entities with well-defined referential integrity constraints.
 
 ### Entity: User
 
@@ -1019,13 +1254,23 @@ The Entity-Relationship (ER) diagram models the logical structure of the databas
 │    role        ENUM('student','admin')│
 │    created_at  TIMESTAMP            │
 └──────────────────────────────────────┘
-          │
-          │ 1 (one user can have many feedback entries)
-          │
-          ◆ ──────────────────────────────
-          │
-          │ many
+
+### Entity: Faculty
+
 ```
+┌──────────────────────────────────────┐
+│              FACULTY                 │
+├──────────────────────────────────────┤
+│ 🔑 id          INT (PK, AI)         │
+│    name        VARCHAR(100)         │
+│    email       VARCHAR(100) ╌UNIQUE║
+│    faculty_id  VARCHAR(50) ╌UNIQUE║
+│    department  VARCHAR(100)         │
+│    subject_taught VARCHAR(200)      │
+│    password_hash VARCHAR(255)       │
+│    role        ENUM('faculty')      │
+│    created_at  TIMESTAMP            │
+└──────────────────────────────────────┘
 
 ### Entity: Feedback
 
@@ -1035,6 +1280,7 @@ The Entity-Relationship (ER) diagram models the logical structure of the databas
 ├──────────────────────────────────────┤
 │ 🔑 id          INT (PK, AI)         │
 │ 🔗 student_id  INT (FK → user.id)   │
+│ 🔗 resolved_by_faculty_id INT (FK→faculty.id) NULL │
 │    category    ENUM('Food','Faculty' │
 │                  ,'Infrastructure',  │
 │                  'Events','Other')   │
@@ -1043,22 +1289,44 @@ The Entity-Relationship (ER) diagram models the logical structure of the databas
 │    is_anonymous BOOLEAN DEFAULT 0   │
 │    status      ENUM('Pending',       │
 │                  'In Progress',      │
-│                  'Resolved')         │
+│                  'Resolved',         │
+│                  'Pinned',           │
+│                  'Verified/Closed',  │
+│                  'Verification Failed')│
 │                  DEFAULT 'Pending'  │
+│    department     VARCHAR(100) NULL  │
+│    subject        VARCHAR(200) NULL  │
+│    semester_year  VARCHAR(20) NULL   │
+│    review_deadline      TIMESTAMP NULL│
+│    escalation_deadline  TIMESTAMP NULL│
+│    failed_verification_count TINYINT DEFAULT 0│
 │    created_at  TIMESTAMP            │
 │    updated_at  TIMESTAMP (nullable) │
 └──────────────────────────────────────┘
+
+### Entity: Comment
+
 ```
+┌──────────────────────────────────────┐
+│              COMMENT                 │
+├──────────────────────────────────────┤
+│ 🔑 id          INT (PK, AI)         │
+│ 🔗 feedback_id  INT (FK → feedback.id)│
+│ 🔗 parent_id     INT (FK → comment.id) NULL│
+│    author_type   ENUM('faculty','student')│
+│    author_id     INT                │
+│    text          TEXT               │
+│    created_at    TIMESTAMP          │
+└──────────────────────────────────────┘
 
-### Relationship: User to Feedback
+### Relationships
 
-| Property | Value |
-|---|---|
-| **Relationship Name** | `submits` / `submitted_by` |
-| **Cardinality** | One-to-Many (1:N) |
-| **Description** | Each User can submit zero or more Feedback entries. Each Feedback entry is submitted by exactly one User. |
-| **Foreign Key** | `feedback.student_id` references `users.id` |
-| **Referential Integrity** | ON DELETE RESTRICT — a user cannot be deleted if they have associated feedback records (prevents orphaned feedback) |
+| Relationship | Type | Description |
+|---|---|---|
+| User → Feedback | One-to-Many (1:N) | Each User can submit zero or more Feedback entries. FK: `feedback.student_id` → `users.id`. ON DELETE RESTRICT prevents orphaned feedback. |
+| Faculty → Feedback (resolved) | One-to-Many (1:N) | A faculty member can resolve multiple feedback items. FK: `feedback.resolved_by_faculty_id` → `faculty.id`. NULL allows unassigned resolved items. |
+| Comment → Feedback | Many-to-One (N:1) | Each comment belongs to exactly one feedback item. FK: `comment.feedback_id` → `feedback.id`. |
+| Comment → Comment (self-ref) | One-to-Many (nested replies) | A parent comment can have many child reply comments. Self-referencing FK: `comment.parent_id` → `comment.id`. Enables Reddit-style threaded discussions. |
 
 ### ER Diagram Structure (for generation in StarUML or similar tool):
 
@@ -1068,32 +1336,50 @@ The Entity-Relationship (ER) diagram models the logical structure of the databas
 ├──────────┤                          ├──────────┤
 | 🔑 id    |                          | 🔑 id     |
 | name     |                          | 🔗student_id│
-| email ╌U║                          | category  |
-| roll_no╌U║                          | rating    |
-| pw_hash  |                          | comment   |
-| role     |                          | is_anon   |
-| created  |                          | status    |
-└──────────┘                          | created   |
-                                      | updated   │
-                                      └──────────┘
+| email ╌U║                          | 🔗resolved_by_faculty_id│
+| roll_no╌U║                          | category  |
+| pw_hash  |                          | rating    |
+| role     |       1        Many      | comment   |
+└──────────┘                            | is_anon   │
+              ┌──────────┐             | status    │
+              │ FACULTY  │◆─────       | department│
+              ├──────────┤             | subject   │
+              | 🔑 id    |             | review_deadline│
+              | faculty_id│            | failed_verif_count│
+              | department│            | created   │
+              | subject_t │            | updated   │
+              └──────────┘             └──────────┘
+
+┌──────────┐       Many      ┌──────────┐
+│ FEEDBACK │◆─────────────◆──│ COMMENT  │
+├──────────┤                 ├──────────┤
+| 🔑 id    |                 | 🔑 id     |
+| ...      |                 | 🔗feedback_id│
+└──────────┘                 | 🔗parent_id (self-ref)│
+                             | author_type │
+                             | author_id │
+                             | text      │
+                             └──────────┘
 
 PK = Primary Key (🔑)
 FK = Foreign Key (🔗)
 U  = Unique Constraint ╌U║
-1:N = One-to-Many relationship
+1:N / N:1 = Cardinality notation
 ```
 
 ### Cardinality Interpretation:
-- **User side (1)**: A single user record is referenced by zero, one, or many feedback records. The "1" indicates that each individual feedback entry points back to exactly one user.
-- **Feedback side (Many)**: A single user can have multiple feedback entries associated with them — there is no upper limit on the number of feedback submissions a student can make.
+- **User → Feedback (1:N)**: A single user record is referenced by zero, one, or many feedback records. Each individual feedback entry points back to exactly one user via `student_id`.
+- **Faculty → Feedback resolved (1:N)**: A faculty member can resolve multiple items; each resolved item references at most one resolver.
+- **Comment → Feedback (N:1)**: Many comments belong to one feedback item.
+- **Comment → Comment self-ref (1:N)**: One parent comment can have many nested replies, enabling threaded discussions.
 
 ---
 
-# Chapter 15: Database Design
+# Chapter 15# Chapter 15: Database Design
 
 ## 15.1 Schema Overview
 
-The database consists of two tables (`users` and `feedback`) connected by a foreign key relationship. The schema was designed following normalization principles (up to Third Normal Form) to minimize data redundancy while maintaining query efficiency for the application's access patterns.
+The database consists of four tables (`users`, `faculty`, `feedback`, `comment`) connected by foreign key relationships. The schema was designed following normalization principles (up to Third Normal Form) to minimize data redundancy while maintaining query efficiency for the application's access patterns. All tables use MySQL-compatible types with SQLAlchemy ORM abstractions that work transparently on SQLite for testing.
 
 ## 15.2 Table: users
 
@@ -1112,56 +1398,117 @@ The database consists of two tables (`users` and `feedback`) connected by a fore
 - UNIQUE INDEX on `email`
 - UNIQUE INDEX on `roll_number`
 
-## 15.3 Table: feedback
+## 15.3 Table: faculty
 
-| Column         | Data Type      | Constraints                          | Description                                   |
-|----------------|---------------|--------------------------------------|-----------------------------------------------|
-| `id`           | INT           | PK, AUTO_INCREMENT                   | Unique identifier for each feedback entry     |
-| `student_id`   | INT           | FK → users.id, NOT NULL              | Reference to the submitting user              |
-| `category`     | ENUM          | NOT NULL                             | Feedback category: Food/Faculty/Infrastructure/Events/Other |
-| `rating`       | TINYINT        | CHECK (1 ≤ rating ≤ 5)               | Numerical satisfaction rating                  |
-| `comment`      | TEXT           | NOT NULL                              | Free-text feedback description                 |
-| `is_anonymous` | BOOLEAN        | DEFAULT FALSE                         | Whether student identity is hidden from admins |
-| `status`       | ENUM          | NOT NULL, DEFAULT 'Pending'           | Resolution status: Pending/In Progress/Resolved |
-| `created_at`   | TIMESTAMP     | DEFAULT CURRENT_TIMESTAMP            | Feedback submission timestamp                  |
-| `updated_at`   | TIMESTAMP     | NULLABLE, ON UPDATE CURRENT_TIMESTAMP | Last status change timestamp                   |
+| Column         | Data Type      | Constraints              | Description                                    |
+|----------------|---------------|--------------------------|------------------------------------------------|
+| `id`           | INT           | PK, AUTO_INCREMENT       | Unique identifier for each faculty account     |
+| `name`         | VARCHAR(100)  | NOT NULL                 | Full name of the faculty member                |
+| `email`        | VARCHAR(100)  | UNIQUE, NOT NULL          | Email address used for authentication           |
+| `faculty_id`   | VARCHAR(50)   | UNIQUE, NOT NULL          | Unique faculty identifier (e.g., "FAC-001")    |
+| `department`   | VARCHAR(100)  | NOT NULL                 | Department assignment (filters feedback visibility) |
+| `subject_taught`| VARCHAR(200) | NOT NULL                 | Subject(s) taught, used for priority matching on dashboard |
+| `password_hash`| VARCHAR(255)  | NOT NULL                 | Hashed password (PBKDF2-SHA256 with salt)      |
+| `role`         | ENUM          | NOT NULL, DEFAULT 'faculty' | Always 'faculty'                           |
+| `created_at`   | TIMESTAMP     | DEFAULT CURRENT_TIMESTAMP | Account creation timestamp                     |
+
+**Indexes**: 
+- PRIMARY KEY on `id`
+- UNIQUE INDEX on `email`
+- UNIQUE INDEX on `faculty_id`
+
+## 15.4 Table: feedback
+
+| Column                   | Data Type      | Constraints                          | Description                                   |
+|-------------------------|---------------|--------------------------------------|-----------------------------------------------|
+| `id`                    | INT           | PK, AUTO_INCREMENT                   | Unique identifier for each feedback entry     |
+| `student_id`            | INT           | FK → users.id, NOT NULL              | Reference to the submitting user              |
+| `category`              | ENUM          | NOT NULL                             | Feedback category: Food/Faculty/Infrastructure/Events/Other |
+| `rating`                | TINYINT        | CHECK (1 ≤ rating ≤ 5)               | Numerical satisfaction rating                  |
+| `comment`               | TEXT           | NOT NULL                              | Free-text feedback description                 |
+| `is_anonymous`          | BOOLEAN        | DEFAULT FALSE                         | Whether student identity is hidden from admins |
+| `status`                | ENUM          | NOT NULL, DEFAULT 'Pending'           | Resolution status: Pending/In Progress/Resolved/Pinned/Verified/Closed/Verification Failed |
+| `department`            | VARCHAR(100)  | NULL                                  | Department for routing to faculty              |
+| `subject`               | VARCHAR(200)  | NULL                                  | Subject for matching with faculty subjects     |
+| `semester_year`         | VARCHAR(20)   | NULL                                  | Semester/year of the student                   |
+| `resolved_by_faculty_id`| INT           | FK → faculty.id, NULL                | Faculty who resolved this item                 |
+| `review_deadline`       | TIMESTAMP     | NULL                                  | Deadline for initial review (24h from submission) |
+| `escalation_deadline`   | TIMESTAMP     | NULL                                  | Escalation deadline (3 days from detection of overdue) |
+| `failed_verification_count` | TINYINT    | NOT NULL, DEFAULT 0                   | Counter incremented on failed verifications    |
+| `created_at`            | TIMESTAMP     | DEFAULT CURRENT_TIMESTAMP            | Feedback submission timestamp                  |
+| `updated_at`            | TIMESTAMP     | ON UPDATE CURRENT_TIMESTAMP          | Last status change timestamp                   |
 
 **Indexes**:
 - PRIMARY KEY on `id`
 - FOREIGN KEY on `student_id` referencing `users(id)` with RESTRICT delete behavior
+- FOREIGN KEY on `resolved_by_faculty_id` referencing `faculty(id)`
 - INDEX on `category` (for filtering queries)
 - INDEX on `status` (for filtering queries)
 - INDEX on `created_at` (for sorting and date-range queries)
 
-## 15.4 Normalization Analysis
+## 15.5 Table: comment
+
+| Column       | Data Type      | Constraints                      | Description                                   |
+|-------------|---------------|----------------------------------|-----------------------------------------------|
+| `id`        | INT           | PK, AUTO_INCREMENT               | Unique identifier for each comment            |
+| `feedback_id`| INT          | FK → feedback.id, NOT NULL       | Reference to the parent feedback item         |
+| `parent_id` | INT           | FK → comment.id, NULL            | Self-referencing FK for nested replies        |
+| `author_type`| ENUM         | NOT NULL                         | 'faculty' or 'student'                        |
+| `author_id` | INT           | NOT NULL                          | ID of the author (matches appropriate table)  |
+| `text`      | TEXT          | NOT NULL                          | Comment text content                           |
+| `created_at`| TIMESTAMP     | DEFAULT CURRENT_TIMESTAMP        | Comment creation timestamp                     |
+
+**Indexes**:
+- PRIMARY KEY on `id`
+- FOREIGN KEY on `feedback_id` referencing `feedback(id)` with RESTRICT delete behavior
+- FOREIGN KEY on `parent_id` referencing `comment(id)` (self-reference, ON DELETE SET NULL)
+- INDEX on `feedback_id` (for loading comment threads per feedback item)
+
+## 15.6 Status Enum Details
+
+The `feedback.status` column supports the following values in order of the workflow lifecycle:
+
+| Value | Description |
+|---|---|
+| `Pending` | Default state when a student submits feedback; visible on admin dashboard immediately |
+| `In Progress` | Admin or faculty has begun reviewing/acting on the item |
+| `Resolved` | Faculty/admin marks the issue as addressed; now awaiting verification |
+| `Pinned` | Overdue item automatically escalated; shown prominently on dashboards |
+| `Verified/Closed` | Final state — admin/faculty verified the resolution was adequate |
+| `Verification Failed` | Resolution was inadequate; item reverts to In Progress with counter incremented |
+
+## 15.7 Normalization Analysis
 
 ### First Normal Form (1NF): Atomic Values
 All columns contain atomic (indivisible) values — no repeating groups or multi-valued attributes. Each cell in the table holds a single value of the appropriate data type.
 
 ### Second Normal Form (2NF): No Partial Dependencies
-All non-key attributes are fully dependent on the primary key:
+All non-key attributes are fully dependent on the primary key across all four tables:
 - In `users`: name, email, roll_number, password_hash, role, and created_at all depend entirely on `id`.
-- In `feedback`: category, rating, comment, is_anonymous, status, created_at, updated_at all depend entirely on `id`. The foreign key `student_id` also depends on the primary key (it identifies which user submitted this specific feedback).
+- In `faculty`: name, email, faculty_id, department, subject_taught, password_hash, role, and created_at all depend entirely on `id`.
+- In `feedback`: category, rating, comment, is_anonymous, status, department, subject, semester_year, resolved_by_faculty_id, review_deadline, escalation_deadline, failed_verification_count, created_at, updated_at all depend entirely on `id`. The foreign keys `student_id` and `resolved_by_faculty_id` also depend on the primary key.
+- In `comment`: feedback_id, parent_id, author_type, author_id, text, and created_at all depend entirely on `id`.
 
 ### Third Normal Form (3NF): No Transitive Dependencies
-No non-key attribute depends on another non-key attribute:
-- In `users`: email uniqueness is enforced independently of other attributes; roll_number uniqueness is independent. No attribute transitively depends through another non-key column.
-- In `feedback`: category and status are ENUM values stored directly (not derived from other columns). Rating is an independent numeric value. The relationship between student_id and user data is managed through the foreign key join, not transitive dependency within the table.
+No non-key attribute depends on another non-key attribute in any of the four tables. All relationships are managed through foreign key joins rather than transitive dependency within a table.
 
-## 15.5 Data Integrity Constraints
+## 15.8 Data Integrity Constraints
 
 | Constraint Type | Implementation | Purpose |
 |---|---|---|
-| Primary Key | `id` AUTO_INCREMENT on both tables | Ensures unique identification of each record |
-| Foreign Key | `feedback.student_id → users.id` with RESTRICT | Prevents orphaned feedback when a user account is deleted; maintains referential integrity |
-| Unique Constraint | `users.email`, `users.roll_number` | Prevents duplicate accounts with the same email or roll number |
+| Primary Key | `id` AUTO_INCREMENT on all four tables | Ensures unique identification of each record |
+| Foreign Key: feedback.student_id → users.id | RESTRICT delete behavior | Prevents orphaned feedback when a user account is deleted |
+| Foreign Key: feedback.resolved_by_faculty_id → faculty.id | NULL allowed, ON DELETE SET NULL | Tracks which faculty resolved an item; allows unassigned items |
+| Foreign Key: comment.feedback_id → feedback.id | RESTRICT delete behavior | Prevents orphaned comments on deleted feedback |
+| Foreign Key: comment.parent_id → comment.id | Self-reference, ON DELETE SET NULL | Enables nested replies while handling parent deletion gracefully |
+| Unique Constraint | users.email, users.roll_number, faculty.email, faculty.faculty_id | Prevents duplicate accounts with the same email or identifier |
 | Check Constraint (Application-level) | Rating validated as integer 1–5 in route handler | Ensures numerical rating falls within acceptable range before database insertion |
-| Default Values | `is_anonymous=FALSE`, `status='Pending'` | Provides sensible defaults so required fields always have valid values on creation |
-| ENUM Constraints | `category`, `role`, `status` columns use MySQL ENUM types | Database-level validation prevents invalid category, role, or status values from being inserted |
+| Default Values | is_anonymous=FALSE, status='Pending', failed_verification_count=0 | Provides sensible defaults so required fields always have valid values on creation |
+| ENUM Constraints | category, role, status, author_type columns use MySQL ENUM types | Database-level validation prevents invalid values from being inserted |
 
 ---
 
-# Chapter 16: UI Design
+# Chapter 16# Chapter 16: UI Design
 
 ## 16.1 Design Philosophy and Visual Language
 
@@ -1205,6 +1552,15 @@ A full-width page with admin navigation bar. The main content area contains:
 ### Feedback Detail Page (`feedback_detail.html`)
 Accessed by clicking a row in the admin dashboard table. Displays full details of a single feedback entry: complete comment text (not truncated), submitter name, category, rating with star visualization, anonymity status indicator, creation timestamp, last updated timestamp, and current status displayed prominently as a large colored badge. Below the information is a status update form with a dropdown showing all three possible statuses and an "Update Status" button.
 
+### Faculty Dashboard (`faculty_dashboard.html`)
+A full-width page with faculty navigation bar and a stats row at the top showing total feedback count, pending review count, and escalated item count as large number cards. Below is a table of department-filtered feedback (excluding 5-star ratings) with columns: Date, Category (with department sub-label), Rating stars, Status badge with MATCH/ESCALATED tags, Subject Match indicator, Comment preview, Countdown timer showing time remaining before escalation deadline, and a "Review" action link. Items matching the faculty's subject_taught are highlighted in green; escalated items have red background highlighting. The table is sorted by priority: subject matches first, then pinned/escalated items.
+
+### Faculty Feedback Detail (`faculty_feedback_detail.html`)
+Accessed by clicking "Review" on a feedback item. Displays full details including category, rating, status badge, department, subject (if applicable), semester/year, student class and year (derived from roll number — never PII exposed), submission timestamp, review/escalation deadlines with countdown timers, and the full comment text. Below are action buttons for status transitions: Pending → In Progress button, In Progress → Resolved button, and when resolved — verification buttons (Verified/Closed or Verification Failed). A discussion thread section shows all comments posted by matching faculty in chronological order with a form to post new comments via AJAX (JSON POST with CSRF headers). When the item is Verified/Closed or Verification Failed, comments are disabled.
+
+### Admin Faculty Management (`admin_faculty.html`)
+A full-width page accessible from the admin dashboard via "Manage Faculty" link. Displays a table of all faculty accounts with columns: Name, Email, Faculty ID, Department, Subjects Taught, and Creation Date. Below is a create-new-faculty form with fields for name, email, unique faculty_id, department dropdown, subject_taught input, password (min 6 chars), and confirm_password. Duplicate email/faculty_id checks prevent conflicting accounts on submission.
+
 ### Reports Page (`reports.html`)
 A full-width page displaying aggregated analytics in three visual sections:
 1. **Average Rating Per Category**: Horizontal bar chart with category names on the y-axis and average rating values (0–5 scale) along the x-axis. Each bar is color-coded by category. Numerical values displayed at the end of each bar.
@@ -1213,7 +1569,24 @@ A full-width page displaying aggregated analytics in three visual sections:
 
 ---
 
-# Chapter 17: Implementation
+### Reports Page (`reports.html`)
+A full-width page displaying aggregated analytics in three visual sections:
+1. **Average Rating Per Category**: Horizontal bar chart with category names on the y-axis and average rating values (0–5 scale) along the x-axis. Each bar is color-coded by category. Numerical values displayed at the end of each bar.
+2. **Feedback Count Per Category**: Donut or pie chart showing the proportion of total feedback entries in each category, with percentage labels and a legend listing all categories with their counts.
+3. **Submission Trends Over Time**: Line graph with time (weeks or months) on the x-axis and number of submissions on the y-axis. The line connects data points for each time period, showing peaks and troughs in feedback volume over the operational history.
+
+### Faculty Dashboard (`faculty_dashboard.html`)
+A full-width page with faculty navigation bar and a stats row at the top showing total feedback count, pending review count, and escalated item count as large number cards. Below is a table of department-filtered feedback (excluding 5-star ratings) with columns: Date, Category (with department sub-label), Rating stars, Status badge with MATCH/ESCALATED tags, Subject Match indicator, Comment preview, Countdown timer showing time remaining before escalation deadline, and a "Review" action link. Items matching the faculty's subject_taught are highlighted in green; escalated items have red background highlighting. The table is sorted by priority: subject matches first, then pinned/escalated items.
+
+### Faculty Feedback Detail (`faculty_feedback_detail.html`)
+Accessed by clicking "Review" on a feedback item. Displays full details including category, rating, status badge, department, subject (if applicable), semester/year, student class and year (derived from roll number — never PII exposed), submission timestamp, review/escalation deadlines with countdown timers, and the full comment text. Below are action buttons for status transitions: Pending → In Progress button, In Progress → Resolved button, and when resolved — verification buttons (Verified/Closed or Verification Failed). A discussion thread section shows all comments posted by matching faculty in chronological order with a form to post new comments via AJAX (JSON POST with CSRF headers). When the item is Verified/Closed or Verification Failed, comments are disabled.
+
+### Admin Faculty Management (`admin_faculty.html`)
+A full-width page accessible from the admin dashboard via "Manage Faculty" link. Displays a table of all faculty accounts with columns: Name, Email, Faculty ID, Department, Subjects Taught, and Creation Date. Below is a create-new-faculty form with fields for name, email, unique faculty_id, department dropdown, subject_taught input, password (min 6 chars), and confirm_password. Duplicate email/faculty_id checks prevent conflicting accounts on submission.
+
+---
+
+# Chapter 17# Chapter 17: Implementation
 
 ## 17.1 Backend Architecture — Flask Application Factory
 
@@ -1221,114 +1594,141 @@ The backend is built using Python's Flask microframework following the applicati
 
 **`app.py` Structure**:
 ```python
-def create_app():
-    # 1. Create Flask instance
+def create_app(config_object=None):
+    # 1. Create Flask instance with config loaded from config.py
     app = Flask(__name__)
+    app.config.from_object(config_object or Config)
     
-    # 2. Load configuration from config.py
-    app.config.from_object('config.Config')
-    
-    # 3. Initialize extensions (SQLAlchemy)
+    # 2. Initialize extensions (SQLAlchemy deferred binding)
     db.init_app(app)
     
-    # 4. Register blueprints
-    app.register_blueprint(auth_bp, url_prefix='/dashboard' or '/')
-    app.register_blueprint(student_bp, url_prefix='/dashboard')
-    app.register_blueprint(admin_bp, url_prefix='/admin')
+    # 3. Enable CSRF protection (Flask-WTF) — disabled in tests via WTF_CSRF_ENABLED=False
+    CSRFProtect(app)
     
-    # 5. Define error handlers (404, 500)
+    # 4. Register blueprints
+    app.register_blueprint(auth_bp, url_prefix='/')          # /register, /login, /logout
+    app.register_blueprint(student_bp, url_prefix='/dashboard')   # student dashboard
+    app.register_blueprint(admin_bp, url_prefix='/admin')     # admin views
+    app.register_blueprint(faculty_bp, url_prefix='/faculty') # faculty views
     
     return app
-
-if __name__ == '__main__':
-    app = create_app()
-    app.run(debug=True)
 ```
 
 The application factory pattern is particularly important for this project because it cleanly separates configuration loading (database URI from `config.py`, secret key, debug mode flag) from route registration and business logic. This separation makes the codebase easier to test — unit tests can call `create_app()` with a test-specific configuration that points to an in-memory SQLite database without affecting the production MySQL setup.
 
 ## 17.2 Database Models — SQLAlchemy ORM
 
-The data models are defined in `models.py` using Flask-SQLAlchemy's declarative base syntax. Each model class maps directly to a database table, with class attributes corresponding to column definitions and types. Relationships between models are expressed through foreign keys and relationship methods.
+The data models are defined in `models.py` using Flask-SQLAlchemy's declarative base syntax. Each model class maps directly to a database table, with class attributes corresponding to column definitions and types. Relationships between models are expressed through foreign keys and relationship methods. Four models are defined: **User**, **Faculty**, **Feedback**, and **Comment**.
 
 **User Model** (`models.py`):
 - Inherits from `db.Model`, the SQLAlchemy declarative base provided by Flask-SQLAlchemy
 - Defines columns using `db.Column()` with appropriate data types (Integer, String, Enum, DateTime)
-- Includes a one-to-many relationship to Feedback via `db.relationship('Feedback', backref='user')` — this enables bidirectional navigation: `user.feedback_entries` returns all feedback by that user, and `feedback.user` returns the submitting user object
+- Includes a one-to-many relationship to Feedback via `db.relationship('Feedback', backref='author')` — this enables bidirectional navigation: `user.feedback_submitted` returns all feedback by that user, and `feedback.author` returns the submitting user object
 - The `password_hash` column stores only hashed values; the actual password is never persisted
+- Helper methods: `set_password(raw_password)` for hashing, `check_password(raw_password)` for verification
+
+**Faculty Model** (`models.py`):
+- Similar structure to User but with faculty-specific fields: `faculty_id`, `department`, `subject_taught`
+- Role is always 'faculty'; accounts are created by admins only (no self-registration)
+- Relationship: `feedback_resolved` — all Feedback items resolved by this faculty member, linked via `resolved_by_faculty_id`
 
 **Feedback Model** (`models.py`):
-- Defines a foreign key to User via `db.ForeignKey('users.id')` on the `student_id` attribute
+- Defines foreign keys to both User (`student_id`) and Faculty (`resolved_by_faculty_id`)
 - Uses MySQL ENUM types for `category`, `status`, and role-like constraints to enforce valid value sets at the database level
 - Includes default values: `is_anonymous=False`, `status='Pending'` — ensuring new feedback records always have well-defined initial states
+- PII-safe serialization methods: `to_faculty_dict(faculty_subject)` returns anonymized dict with class/year from roll_number (never name/email/roll); `to_admin_dict()` attaches student PII only when is_anonymous=False
+- Verification lifecycle helpers: `verify_success()` transitions Resolved → Verified/Closed; `verify_failure()` transitions Resolved → In Progress, increments failed_verification_count
 
-## 17.3 Authentication Module (`blueprints/auth.py`)
+**Comment Model** (`models.py`):
+- Links to Feedback via `feedback_id` foreign key and supports nested replies via self-referencing `parent_id`
+- `author_type` distinguishes faculty vs student authors; `author_id` stores the relevant ID
+- Self-referential relationship: `replies` (child comments) and `parent` (parent comment back-reference)
 
-The authentication blueprint handles three routes: `/register` (POST for account creation, GET to display the form), `/login` (POST for credential verification, GET to display login page), and `/logout` (GET to terminate sessions).
+## 17.3 Authentication Module (`blueprints/auth/routes.py`)
+
+The authentication blueprint handles three routes: `/register` (POST for account creation, GET to display the form), `/login` (POST for credential verification, GET to display login page), and `/logout` (GET to terminate sessions). The login route supports multi-role authentication by first checking the User table (for students/admins) then falling back to the Faculty table.
 
 **Registration Flow**:
 1. Form data is received via POST request
-2. Validation checks: email format, unique roll_number, unique email, password length ≥ 6 characters
-3. Password is hashed using `werkzeug.security.generate_password_hash(password, method='pbkdf2:sha256', salt_length=64)`
+2. Validation checks: email format, unique roll_number, unique email, password length ≥ 6 characters, password confirmation match
+3. Password is hashed using `werkzeug.security.generate_password_hash(password)` (pbkdf2:sha256 by default)
 4. A new User instance with role='student' is created and added to the session
 5. `db.session.commit()` persists the record; if successful, user is redirected to login
 
 **Login Flow**:
 1. Identifier (email or roll_number) and password received via POST
-2. Query finds matching user: `User.query.filter((User.email == identifier) | (User.roll_number == identifier)).first()`
-3. If user found and `check_password_hash(user.password_hash, password)` returns True:
-   - Session variables set: `session['user_id']`, `session['role']`, `session['name']`
-   - Flash success message created
-   - User redirected to role-appropriate dashboard (`/dashboard` for students, `/admin/dashboard` for admins)
-4. If no match or wrong password: flash error message "Invalid credentials" (deliberately non-specific to prevent user enumeration)
+2. Query finds matching user in users table: `User.query.filter((User.email == identifier) | (User.roll_number == identifier)).first()`
+3. If no match found, query falls back to faculty table: `Faculty.query.filter_by(email=identifier).first()`
+4. If user/faculty found and password verified via `check_password_hash()`: session variables set (`user_id`/`faculty_id`, `role`, `name`); redirect to role-appropriate dashboard
+5. If no match or wrong password: flash error message "Invalid credentials" (deliberately non-specific)
 
 **Logout Flow**:
 1. `session.clear()` removes all session variables
-2. Flash message "You have been logged out." displayed
+2. Flash message displayed
 3. Redirect to `/login`
 
-## 17.4 Student Module (`blueprints/student.py`)
+## 17.4 Student Module (`blueprints/student/__init__.py`)
 
-The student blueprint contains two primary routes: the dashboard (GET) and feedback submission (POST).
+The student blueprint contains two primary routes: the dashboard (GET) and feedback submission (POST, on the same route).
 
-**Dashboard Route**: Queries all Feedback records where `student_id == current_user.id`, ordered by `created_at DESC`. The query uses SQLAlchemy's filter method for parameterized safety. Results are passed to the template as a list of Feedback objects, which Jinja2 iterates over using `{% for feedback in feedbacks %}` syntax.
+**Dashboard Route**: Queries all Feedback records where `student_id == current_user.id`, ordered by `created_at DESC`. The query uses SQLAlchemy's filter method for parameterized safety. Results are passed to the template as a list of Feedback objects. For each item, countdown timers and escalation status are computed inline. Comment thread loading is handled client-side via AJAX calls to `/faculty/feedback/<id>/comments` (read-only for students).
 
-**Submission Route**: Receives POST data from the submission form. Validates all fields (category must be one of the five ENUM values; rating must be convertible to int between 1 and 5; comment cannot be empty). Creates a new Feedback instance with `student_id=session['user_id']`, adds it to the session, commits, and redirects back to dashboard with success flash message.
+**Submission Route**: Receives POST data from the submission form. Validates all fields (category must be one of the five ENUM values; rating must be convertible to int between 1 and 5; comment cannot be empty). For Faculty/Food categories, department and subject are captured. Creates a new Feedback instance with `student_id=session['user_id']`, sets review_deadline to 24 hours from now, adds it to the session, commits, and redirects back to dashboard with success flash message.
 
-## 17.5 Admin Module (`blueprints/admin.py`)
+## 17.5 Admin Module (`blueprints/admin/__init__.py`)
 
-The admin blueprint is the most complex module, containing routes for the master dashboard with filtering, individual feedback detail view with status updates, and aggregated reports.
+The admin blueprint is the most complex module, containing routes for the master dashboard with filtering, individual feedback detail view with status updates and verification actions, faculty account management (list + create), and aggregated reports.
 
-**Dashboard Route (GET)**: Accepts optional query parameters from the filter form (`category`, `status`, `min_rating`, `start_date`, `end_date`, `search`). Builds a SQLAlchemy query dynamically — starting with `Feedback.query.order_by(Feedback.created_at.desc())` and conditionally appending `.filter()` clauses for each non-empty filter parameter. This allows arbitrary combinations of filters without needing separate routes or hardcoded logic. After fetching results, iterates through them to set `feedback.student_name = 'Anonymous'` when `is_anonymous=True`, enforcing privacy at the query layer.
+**Dashboard Route (GET)**: Accepts optional query parameters from the filter form (`category`, `status`, `rating`, `date_from`, `date_to`, `keyword`). Builds a SQLAlchemy query dynamically — starting with `Feedback.query.order_by(Feedback.created_at.desc())` and conditionally appending `.filter()` clauses for each non-empty filter parameter. After fetching results, iterates through them to set PII-safe fields via `to_admin_dict()`. Also queries resolved/pinned items separately for the Faculty Review section with verification action buttons.
 
-**Status Update Route (POST)**: Receives feedback ID from URL path and new status from form data. Verifies admin role via session check. Uses `Feedback.query.get_or_404(feedback_id)` to safely retrieve the target record. Updates `feedback.status = new_status` and commits with automatic `updated_at` timestamp refresh (via MySQL's ON UPDATE CURRENT_TIMESTAMP trigger or SQLAlchemy event listener).
+**Status Update Route (POST)**: Receives feedback ID from URL path and new status from form data. Verifies admin role via session check. Uses `Feedback.query.get_or_404(feedback_id)` to safely retrieve the target record. Updates `feedback.status = new_status` and commits with automatic `updated_at` timestamp refresh.
 
-**Reports Route (GET)**: Executes SQL aggregate queries using SQLAlchemy's `func.avg()`, `func.count()`, and `func.date_format()` to compute: average rating per category (`GROUP BY category`), feedback count per category (`GROUP BY category`), and weekly/monthly submission trends (`GROUP BY YEARWEEK(created_at)` or `GROUP BY DATE_FORMAT(created_at, '%Y-%m')`). Results are passed to the template as dictionaries for chart rendering.
+**Verification Routes (POST)**: `/verify-success/<id>` transitions Resolved → Verified/Closed via `fb.verify_success()`. `/verify-failure/<id>` transitions Resolved → In Progress via `fb.verify_failure()` which increments failed_verification_count and checks if escalation threshold is reached.
 
-## 17.6 Frontend Implementation — Templates and Static Assets
+**Faculty Management Routes**: GET `/admin/faculty` lists all Faculty records. POST `/admin/faculty/create` creates a new faculty account with hashed password, checking for duplicate email/faculty_id.
+
+**Reports Route (GET)**: Executes SQL aggregate queries using SQLAlchemy's `func.avg()`, `func.count()`, and date functions to compute average rating per category, feedback count per category/department, monthly/weekly trends, status distribution, and escalation metrics.
+
+## 17.6 Faculty Module (`blueprints/faculty/routes.py`)
+
+The faculty blueprint handles department-filtered dashboard display, individual feedback review with status transitions, comment posting via AJAX, resolution verification, and automatic escalation of overdue items.
+
+**Dashboard Route (GET)**: Queries the logged-in faculty's department from session, runs `_check_and_escalate()` to pin any overdue items in that department, then fetches matching feedback (`department=faculty.department`, `rating != 5`) ordered by subject match priority and creation date. Each result is serialized via `to_faculty_dict(faculty_subject)` for PII-safe display.
+
+**Feedback Detail Route (GET)**: Retrieves a single feedback item by ID, checks department membership, computes escalation status, and renders the detail template with countdown timers and action buttons appropriate to the current status.
+
+**Status Update Route (POST)**: Similar to admin but only allows transitions within the faculty's department. When marking Resolved, records `resolved_by_faculty_id`.
+
+**Comment Posting Route (POST)**: Accepts JSON body via AJAX (`Content-Type: application/json`). Verifies session role is 'faculty' AND feedback's department matches faculty's department. Creates Comment record with author_type='faculty', author_id=faculty.id. Returns 201 with the new comment as JSON for client-side thread append.
+
+**Verification Route (POST)**: Accepts `action` parameter ('success' or 'failure'). Calls `fb.verify_success()` or `fb.verify_failure()` respectively. On failure, checks if failed_verification_count >= 3 and triggers escalation if so.
+
+## 17.7 Frontend Implementation — Templates and Static Assets
 
 **Template Architecture**:
-- `base.html`: Shared layout file defining the HTML skeleton (DOCTYPE, head with CSS includes, body with navigation bar, main content block `{% block content %}{% endblock %}`, footer). All other templates extend this using `{% extends "base.html" %}`.
-- Role-specific flash message blocks in base template: `{% with messages = get_flashed_messages(with_categories=true) %}` iterates over flash messages and displays them with appropriate Bootstrap-like CSS classes (alert-success, alert-danger, etc.).
+- `base.html`: Shared layout file defining the HTML skeleton (DOCTYPE, head with CSS includes, body with navigation bar, main content block), flash message display, and a `<meta name="csrf-token">` tag for CSRF token access by JavaScript. All other templates extend this using `{% extends "base.html" %}`.
+- Role-specific flash message blocks in base template: `{% with messages = get_flashed_messages(with_categories=true) %}` iterates over flash messages and displays them with appropriate CSS classes (alert-success, alert-danger, etc.).
 
 **Static Assets**:
 - `static/css/style.css`: Custom stylesheets for responsive layout (flexbox containers, grid tables), status badge colors, star rating component styling, navigation bar design, mobile breakpoint adjustments.
-- `static/js/script.js`: Client-side JavaScript for form validation (checking required fields before submit, confirming password match on registration, validating rating range), interactive star rating component (click-to-fill stars with visual feedback), and dynamic filter application (AJAX-style form submission or standard POST to server).
+- `static/js/main.js`: Shared client-side JavaScript for general utilities.
+- `static/js/countdown.js`: Countdown timer logic that reads review/escalation deadlines from data attributes and updates display elements with color-coded urgency states (blue = active, yellow = warning, red = overdue).
+- `static/js/comments.js`: AJAX comment loading (`loadComments`) and posting (`postComment`) functions. Reads CSRF token from `<meta name="csrf-token">` header; sends X-CSRFToken in POST requests for security.
 
-## 17.7 Configuration Management (`config.py`)
+## 17.8 Configuration Management (`config.py`)
 
-The configuration module uses a class-based approach where the `Config` class holds all environment-specific settings:
-- `SQLALCHEMY_DATABASE_URI`: MySQL connection string constructed from host, user, password, and database name variables (loaded from environment or hardcoded for local development)
-- `SECRET_KEY`: Cryptographically random string used for session signing and CSRF protection
-- `SQLALCHEMY_TRACK_MODIFICATIONS`: Set to False to disable SQLAlchemy's signal tracking overhead in production
+The configuration module uses a class-based approach where the `Config` base class holds all environment-specific settings, with subclasses for Development and Production profiles:
+- `SQLALCHEMY_DATABASE_URI`: Read from `DATABASE_URL` environment variable; falls back to SQLite at `instance/student_feedback.db`. Does not read separate MYSQL_HOST/MYSQL_USER/MYSQL_PASSWORD/DB variables.
+- `SECRET_KEY`: DevelopmentConfig uses a default `'dev-secret-key-change-in-prod'`; ProductionConfig (DEBUG=False) raises RuntimeError if SECRET_KEY is not set via environment, preventing accidental deployment with a weak key.
+- `SQLALCHEMY_TRACK_MODIFICATIONS`: Set to False to disable SQLAlchemy's signal tracking overhead in production.
 
 ---
 
-# Chapter 18: Testing
+# Chapter 18# Chapter 18: Testing
 
 ## 18.1 Testing Methodology
 
-The Student Feedback Management System was tested using a combination of manual functional testing and structured unit test files. Given the scope of this lab project, exhaustive automated test coverage (such as full integration or load testing) was not implemented; instead, focused manual testing validated each user flow end-to-end while dedicated test Python files verified critical security and business logic behaviors programmatically.
+The Student Feedback Management System was tested using a combination of manual functional testing and automated unit tests via pytest. The project includes **79 automated pytest tests** distributed across five test files, covering authentication flows, admin dashboard operations, PII protection for both anonymous feedback and faculty views, report aggregation accuracy, CSRF rejection of unauthenticated POST requests, and faculty-specific behaviors (department filtering, comment posting, status transitions, verification). These automated tests run against an in-memory SQLite database with CSRF explicitly disabled (`WTF_CSRF_ENABLED = False`) to isolate logic from form rendering concerns. In addition to the automated suite, manual functional testing was conducted across all user flows to verify end-to-end correctness of UI interactions and edge cases not easily captured by unit tests.
 
 ## 18.2 Test Files Structure
 
@@ -1337,12 +1737,12 @@ The Student Feedback Management System was tested using a combination of manual 
 | `test_auth.py` | Authentication flows (registration, login, logout) | User account lifecycle |
 | `test_admin.py` | Admin dashboard operations (viewing, filtering, updating status) | Administrative functionality |
 | `test_admin_pii.py` | Anonymous feedback PII protection for admin views | Security — identity suppression |
-| `test_faculty_pii.py` | Student/PII visibility controls across roles | Data privacy verification |
+| `test_faculty_pii.py` | Faculty department filtering, PII suppression, status transitions, comments, verification | Faculty workflow and data privacy |
 | `test_reports.py` | Report page data aggregation and computation accuracy | Analytics correctness |
 
 ## 18.3 Test Cases Table
 
-The following table documents the comprehensive test cases executed during manual functional testing of all system features:
+The following table documents a representative subset of test cases (TC-01 through TC-23) from the full automated and manual test suite. The complete test suite comprises 79 pytest tests across five files; these represent key scenarios covering registration, login, feedback submission, filtering, status management, PII protection, verification workflows, and escalation logic.
 
 | TC-ID | Description | Input / Steps | Expected Output | Status |
 |-------|-------------|---------------|-----------------|--------|
@@ -1389,7 +1789,7 @@ The Student Feedback Management System has been fully implemented according to a
 
 ## 19.2 Functional Verification Summary
 
-All 23 test cases (TC-01 through TC-23) documented in the Testing chapter were executed successfully with expected outcomes confirmed. The system correctly handles:
+The complete automated test suite of **79 pytest tests** across five files all pass successfully, covering authentication flows, admin dashboard operations, PII protection for anonymous feedback and faculty views, report aggregation accuracy, CSRF rejection, and faculty-specific behaviors (department filtering, comment posting, status transitions, verification). The representative subset documented in the Testing chapter (TC-01 through TC-23) covers key scenarios including registration, login, feedback submission with anonymity, multi-criteria filtering, status management, role-based access control, and password hashing. The system correctly handles:
 - Account creation with uniqueness validation on both email and roll number fields
 - Secure credential verification using hashed password comparison without exposing which field caused authentication failure
 - Feedback submission with server-side validation enforcing category ENUM constraints, rating range (1–5), and non-empty comment requirement
@@ -1397,18 +1797,11 @@ All 23 test cases (TC-01 through TC-23) documented in the Testing chapter were e
 - Role-based access control — students cannot access admin routes; admins cannot submit feedback through student endpoints
 - Status workflow progression with proper timestamp recording on each transition
 
-## 19.3 Performance Observations
+## 19.3 Performance Notes
 
-Under local development server conditions (Flask debug mode, MySQL running locally on the same machine):
+No formal performance benchmarks have been measured for this project. The system runs on Flask's development server with SQLite (for testing) or local MySQL, and page load times depend heavily on hardware, database size, and network conditions. 
 
-| Metric | Observed Value | Target | Status |
-|---|---|---|---|
-| Admin dashboard load time (500 records) | ~2.1 seconds | ≤ 3 seconds | ✅ Met |
-| Student dashboard load time (100 entries) | ~0.8 seconds | ≤ 2 seconds | ✅ Exceeded |
-| Report page computation time | ~1.2 seconds | < 3 seconds | ✅ Met |
-| Feedback submission response time | ~0.4 seconds | — | N/A (well within acceptable range) |
-
-Performance targets were achieved through efficient SQLAlchemy query construction with appropriate indexing on filtered columns (`category`, `status`, `created_at`), eager loading of the user relationship to avoid N+1 query patterns, and minimal processing overhead in route handlers.
+The author is advised to measure actual page load times, query execution durations, and feedback submission response times during live testing using browser DevTools Performance tab or a simple benchmarking script, then record the real values in this section. As noted in NFR-02 (Performance), performance figures should reflect measured values rather than targets, since no formal indexing strategy (beyond primary keys) or eager loading optimization has been implemented in the current codebase.
 
 ## 19.4 Screenshots Placeholder
 
@@ -1459,7 +1852,7 @@ The Student Feedback Management System offers several significant advantages ove
 ## 20.2 Technical Advantages
 
 - **Modular Architecture**: Blueprint separation makes it straightforward for future developers to extend functionality — adding a new feature like email notifications requires modifying only one blueprint file without touching existing route logic.
-- **Scalable Database Design**: The two-table schema with proper indexing supports growth to thousands of users and tens of thousands of feedback entries without requiring structural redesign.
+- **Scalable Database Design**: The four-table schema (`users`, `faculty`, `feedback`, `comment`) with primary keys and foreign key constraints supports growth to thousands of users, hundreds of faculty members, and tens of thousands of feedback entries with comment threads without requiring structural redesign.
 - **Security by Default**: Password hashing, parameterized queries (SQLAlchemy ORM), session signing, and role-based decorators are implemented at the framework level — developers do not need to remember to add security measures on a per-route basis.
 
 ---
