@@ -34,6 +34,14 @@ def create_app(config_object=None):
     from flask_wtf.csrf import CSRFProtect
     CSRFProtect(app)
 
+    # Production SECRET_KEY enforcement — must come from environment
+    if app.config.get('DEBUG') is False and not app.config.get('SECRET_KEY'):
+        raise RuntimeError(
+            "SECRET_KEY must be set via the SECRET_KEY environment "
+            "variable for production. Generate one with:\n"
+            "  python -c 'import secrets; print(secrets.token_hex(32))'"
+        )
+
     # Register blueprints — routes are added in subsequent steps.
     # See PROJECT.md → Routes for the expected URL layout.
     from blueprints.auth import auth_bp

@@ -15,15 +15,16 @@ _default_db = (
 class Config:
     """Base configuration — overrides live in subclasses."""
 
-    SECRET_KEY = os.environ.get(
-        "SECRET_KEY", "dev-secret-key-change-in-prod"
-    )
+    SECRET_KEY = os.environ.get("SECRET_KEY")
     SQLALCHEMY_DATABASE_URI = _default_db
     SQLALCHEMY_TRACK_MODIFICATIONS = False
 
 
 class DevelopmentConfig(Config):
     DEBUG = True
+    SECRET_KEY = os.environ.get(
+        "SECRET_KEY", "dev-secret-key-change-in-prod"
+    )
 
 
 class ProductionConfig(Config):
