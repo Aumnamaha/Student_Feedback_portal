@@ -655,6 +655,9 @@ Custom decorators (`@login_required`, `@admin_required`) wrap route handler func
 ## 10.1 Textual Description for Diagram Generation
 
 The use case diagram illustrates the interactions between actors (users) and system functionalities (use cases). There are three primary actors in this system: **Student**, **Admin**, and **Faculty**. A tertiary implicit actor is the **Database**, which stores and retrieves data as needed by the system.
+![Figure 10.1: Use Case Diagram of the Student Feedback Management System](docs/images/01_use_case_diagram.png)
+
+*Figure 10.1: Use Case Diagram of the Student Feedback Management System*
 
 ### Actors
 1. **Student**: An enrolled student who can register, login, submit feedback, view their own feedback history, read comment threads on their submissions, and logout.
@@ -691,100 +694,17 @@ The use case diagram illustrates the interactions between actors (users) and sys
 - **Extends**: "Filter Feedback" extends "View All Feedback" — filtering is an optional refinement applied to the base view. Similarly, "Search Feedback" extends "View All Feedback".
 - **Generalization**: Student, Admin, and Faculty all share the common use case of "Login", but with different credential sets and post-login redirections.
 
-### Diagram Structure (for generation in StarUML or similar tool)
-```
-[Student] ──(Register)──┐
-                        ├──> [System: Student Feedback Management]
-[Student] ──(Login)─────┤
-                        │
-[Student] ──(Submit     │
-         Feedback)─────┤
-                        │
-[Student] ──(View Own   │
-         Feedback +     │
-         Comments)─────┤
-                        │
-[Student] ──(Logout)───┘
-
-[Admin]  ──(Login Admin)──┐
-                          ├──> [System: Student Feedback Management]
-[Admin]  ──(View All      │
-           Feedback)─────┤
-                          │
-[Admin]  ──(Filter        │
-           Feedback)─────┤   (extends View All Feedback)
-                          │
-[Admin]  ──(Search        │
-           Feedback)─────┤   (extends View All Feedback)
-                          │
-[Admin]  ──(View Feedback │
-           Detail)───────┤
-                          │
-[Admin]  ──(Update Status│
-           of Feedback)──┤
-                          │
-[Admin]  ──(Verify        │
-           Resolution)───┤   (Verified/Closed or fail)
-                          │
-[Admin]  ──(Manage        │
-           Faculty)──────┤
-                          │
-[Admin]  ──(View Reports)│
-                          │
-[Admin]  ──(Logout)──────┘
-
-[Faculty] ──(Login Faculty)──┐
-                             ├──> [System: Student Feedback Management]
-[Faculty] ──(View Dept       │
-             Feedback)──────┤   (department-filtered, rating≠5)
-                             │
-[Faculty] ──(Update Status  │
-             of Feedback)───┤   (Pending→In Progress→Resolved)
-                             │
-[Faculty] ──(Post Comments)─┤   (AJAX, nested replies supported)
-                             │
-[Faculty] ──(Verify          │
-             Resolution)────┤   (Verified/Closed or fail)
-                             │
-[Faculty] ──(Logout)────────┘
-
-<<include>> Submit Feedback → Validate Inputs
-<<extend>> Filter Feedback → View All Feedback
-<<extend>> Search Feedback → View All Feedback
-```
-
----
-
 # Chapter 11: Class Diagram
 
 ## 11.1 Textual Description for Diagram Generation
 
 The class diagram defines the static structure of the system's object model — four classes are defined as SQLAlchemy ORM models in `models.py`: `User`, `Faculty`, `Feedback`, and `Comment`. These classes encapsulate both data (attributes mapped to database columns) and behavior (methods for validation, relationship navigation, verification lifecycle, and PII-safe serialization).
+![Figure 11.1: Class Diagram (User, Faculty, Feedback, Comment)](docs/images/02_class_diagram.png)
+
+*Figure 11.1: Class Diagram (User, Faculty, Feedback, Comment)*
 
 ### Class: User
 
-```
-┌─────────────────────────────────────┐
-│              User                   │
-├─────────────────────────────────────┤
-│ - id: int (PK, AUTO_INCREMENT)     │
-│ - name: str                          │
-│ - email: str (UNIQUE)               │
-│ - roll_number: str | None (UNIQUE)  │
-│ - password_hash: str                │
-│ - role: str ('student'/'admin')    │
-│ - created_at: datetime              │
-├─────────────────────────────────────┤
-│ + __init__(...)                      │
-│ + validate_password(password: str): bool │
-│ + get_feedback_entries(): list       │
-│ + __repr__(): str                    │
-└─────────────────────────────────────┘
-         │
-         │ 1
-         │
-         │ many
-```
 
 **Attributes**:
 - `id`: Primary key, auto-incremented integer uniquely identifying each user record.
@@ -802,31 +722,6 @@ The class diagram defines the static structure of the system's object model — 
 
 ### Class: Faculty
 
-```
-┌─────────────────────────────────────┐
-│             Faculty                 │
-├─────────────────────────────────────┤
-│ - id: int (PK, AUTO_INCREMENT)     │
-│ - name: str                          │
-│ - email: str (UNIQUE)               │
-│ - faculty_id: str (UNIQUE)          │
-│ - department: str                    │
-│ - subject_taught: str                │
-│ - password_hash: str                │
-│ - role: str ('faculty')             │
-│ - created_at: datetime              │
-├─────────────────────────────────────┤
-│ + __init__(...)                      │
-│ + set_password(raw_password): void  │
-│ + check_password(raw_password): bool│
-│ + get_resolved_feedback(): list     │
-│ + __repr__(): str                    │
-└─────────────────────────────────────┘
-         │
-         │ 1
-         │
-         │ many
-```
 
 **Attributes**:
 - `id`: Primary key, auto-incremented integer.
@@ -846,31 +741,6 @@ The class diagram defines the static structure of the system's object model — 
 
 ### Class: Comment
 
-```
-┌─────────────────────────────────────┐
-│             Feedback                │
-├─────────────────────────────────────┤
-│ - id: int (PK, AUTO_INCREMENT)     │
-│ - student_id: int (FK → User.id)   │
-│ - category: str ('Food'...'Other')  │
-│ - rating: int (1-5)                │
-│ - comment: str (TEXT)              │
-│ - is_anonymous: bool               │
-│ - status: str ('Pending'...'Resolved')│
-│ - created_at: datetime              │
-│ - updated_at: datetime              │
-├─────────────────────────────────────┤
-│ + __init__(...)                      │
-│ + get_status_badge_class(): str      │
-│ + get_rating_stars(): str            │
-│ + __repr__(): str                    │
-└─────────────────────────────────────┘
-         ▲
-         │
-         │ many
-         │
-         │ 1
-```
 
 **Attributes**:
 - `id`: Primary key, auto-incremented integer uniquely identifying each feedback entry.
@@ -912,33 +782,11 @@ The class diagram defines the static structure of the system's object model — 
 ## 12.1 Sequence for "Submit Feedback" (Student)
 
 This sequence diagram describes the interaction flow when an authenticated student submits a new feedback entry through `blueprints/student/__init__.py`. The interaction spans multiple system components from the user's browser to the database and back.
+![Figure 12.1: Sequence Diagram - Submit Feedback](docs/images/03_sequence_diagram_submit_feedback.png)
+
+*Figure 12.1: Sequence Diagram - Submit Feedback*
 
 ### Sequence Steps:
-
-```
-Student → Frontend: Click "Submit Feedback" button on student_dashboard.html form
-Frontend → Student: Client-side validation (required fields, rating 1-5)
-Frontend → Flask Route Handler: HTTP POST to /dashboard with form data
-                                (category, rating, comment, anonymous checkbox,
-                                 department, subject, semester_year — conditional)
-
-Flask Route Handler → Flask Route Handler: Verify session['user_id'] exists (@login_required decorator)
-Flask Route Handler → ORM Model: Create Feedback object
-                                    student_id=session['user_id'],
-                                    category=request.form['category'],
-                                    rating=int(request.form['rating']),
-                                    comment=request.form['comment'],
-                                    is_anonymous=(checkbox == 'on'),
-                                    department/subject/semester_year (for Faculty/Food cats),
-                                    review_deadline=datetime.now(UTC) + 24h
-
-ORM Model → Database Session: db.session.add(feedback_obj)
-Database Session → MySQL/SQLite: INSERT INTO feedback VALUES (...)
-MySQL/SQLite → Database Session: Confirmation of insert (row ID assigned)
-Database Session → Flask Route Handler: db.session.commit() returns success
-Flask Route Handler → Frontend: Redirect to /dashboard with flash message "Feedback submitted successfully!"
-Frontend → Student: Display updated dashboard showing new entry in history table
-```
 
 ### Alternative Flow (Validation Failure):
 If any validation fails (e.g., rating outside 1–5, missing required fields), the Flask route handler returns an error response with appropriate flash messages, and the frontend displays the errors without committing to the database.
@@ -946,6 +794,9 @@ If any validation fails (e.g., rating outside 1–5, missing required fields), t
 ## 12.2 Sequence for "Faculty Login and Dashboard Load"
 
 This sequence shows multi-role authentication followed by the faculty dashboard loading with department filtering, automatic escalation check, and PII-safe serialization.
+![Figure 12.2: Sequence Diagram - Faculty Login and Dashboard Load](docs/images/03b_sequence_faculty_login_dashboard.png)
+
+*Figure 12.2: Sequence Diagram - Faculty Login and Dashboard Load*
 
 ### Participants:
 1. **Faculty** — End-user via web browser
@@ -998,10 +849,13 @@ ORM Model → Flask Route Handler: [fb.to_faculty_dict(faculty_subject=faculty.s
 
 Flask Route Handler → Frontend: Render faculty_dashboard.html with feedback_list, pending_count, escalated_count
 Frontend → Faculty: Display department table with stats cards, countdown timers, escalation badges
-```
+
 ## 12.3 Post Comment (Faculty, AJAX)
 
 This sequence describes how a matching faculty member posts a comment on a feedback item via an AJAX JSON POST request from the frontend.
+![Figure 12.3: Sequence Diagram - Post Comment](docs/images/03c_sequence_post_comment.png)
+
+*Figure 12.3: Sequence Diagram - Post Comment*
 
 ### Participants:
 1. **Faculty** — End-user typing a comment in the discussion thread
@@ -1012,27 +866,15 @@ This sequence describes how a matching faculty member posts a comment on a feedb
 
 ### Sequence Steps:
 
-```
-Faculty/Student → Frontend: Type comment in textarea; click Post
-Frontend → JavaScript (comments.js / inline script): Read CSRF token from <meta name="csrf-token">
-Frontend → Flask Route Handler: HTTP POST to /faculty/feedback/<id>/comment with JSON body
-                                {"text": "...", X-CSRFToken: csrf_token}
 
-Flask Route Handler → Flask Route Handler: Verify session['role']=='faculty' AND fb.department == faculty.department
-ORM Model (Comment): Create new Comment(feedback_id=id, author_type='faculty', author_id=faculty.id, text=text)
-ORM Model → Database Session: db.session.add(comment); db.session.commit()
-Database Session → MySQL/SQLite: INSERT INTO comment VALUES (...)
-
-alt JSON request (AJAX)
-    Flask Route Handler → Frontend: 201 {"id": N, "text": "...", "created_at": "..."}
-    Frontend → JavaScript: Append comment div to .comment-thread element
-else Form POST (non-AJAX)
-    Flask Route Handler → Frontend: Flash message + redirect
 ```
 
 ## 12.4 Verify Resolved Feedback (Faculty or Admin)
 
 This sequence describes the verification workflow when a faculty member or admin verifies a resolved feedback item. Both verify methods (`verify_success()` and `verify_failure()`) raise ValueError unless status == 'Resolved'.
+![Figure 12.4: Sequence Diagram - Verify Resolved Feedback](docs/images/03d_sequence_verification.png)
+
+*Figure 12.4: Sequence Diagram - Verify Resolved Feedback*
 
 ### Participants:
 1. **Admin or Faculty** — End-user clicking verification buttons on a Resolved feedback detail page
@@ -1041,28 +883,8 @@ This sequence describes the verification workflow when a faculty member or admin
 4. **ORM Model** (`Feedback.verify_success()`, `Feedback.verify_failure()` in `models.py`) — Verification lifecycle methods
 5. **Database Session / MySQL-SQLite** — Persistent storage
 
-### Sequence Steps:
+### Sequence Steps
 
-```
-Admin/Faculty → Frontend: Click "✓ Verify" or "✗ Fail" on a Resolved feedback item
-Frontend → Flask Route Handler: HTTP POST to /admin/feedback/<id>/verify-success 
-                                OR /faculty/feedback/<id>/verify with action='success'/'failure' + csrf_token
-
-Flask Route Handler → ORM Model (Feedback): fb = db.session.get(Feedback, id)
-                                             Verify status == 'Resolved' before calling verify methods
-
-alt Action = 'success'
-    ORM Model: fb.verify_success() → sets status = 'Verified/Closed'
-else Action = 'failure'
-    ORM Model: fb.verify_failure() → increments failed_verification_count + 1,
-                                                sets status = 'In Progress'
-                                             (If count >= 3, item is escalated)
-
-ORM Model → Database Session: db.session.commit()
-Database Session → MySQL/SQLite: UPDATE feedback SET status=?, failed_verification_count=? WHERE id=?
-
-Flask Route Handler → Frontend: Flash message confirming outcome
-Frontend → Admin/Faculty: Redirect back to detail page; updated status badge shown
 ```
 
 ## 12.5 Admin Update Feedback Status
@@ -1107,102 +929,12 @@ Frontend → Admin: Redirect back to admin dashboard; table now shows updated st
 ## 13.1 Feedback Status Lifecycle (Activity Flow)
 
 This activity diagram describes the state transitions that a feedback entry undergoes from initial submission through eventual resolution or closure. Unlike a simple linear workflow, this lifecycle involves multiple actors (Faculty and Admin), verification decision points with a failed-verification loop back to In Progress, and escalation checks when deadlines pass.
+![Figure 13.1: Activity Diagram - Feedback Status Lifecycle](docs/images/04a_activity_status_lifecycle.png)
+
+*Figure 13.1: Activity Diagram - Feedback Status Lifecycle*
 
 ### Process Flow:
 
-```
-[Start: Student submits feedback]
-          │
-          ▼
-┌─────────────────────┐
-│ Status = Pending    │ ◄── Default state on creation; review_deadline set (24h)
-└─────────────────────┘
-          │
-     ┌────┴────┐
-     │ Faculty │  Admin reviews or monitors
-     │ reviews │  (both can transition status)
-     └────┬────┘
-      Yes │        No → Monitor / escalate if overdue
-          ▼
-┌─────────────────────┐
-│ Status =            │ ◄── Set by Faculty or Admin
-│ In Progress         │
-└─────────────────────┘
-          │
-     ┌────┴────┐
-     │ Faculty │  Both can mark Resolved; resolved_by_faculty_id recorded
-     │ resolves │  when a faculty member does it
-     └────┬────┘
-      Yes │        No → Continue working / escalate if overdue
-          ▼
-┌─────────────────────┐
-│ Status = Resolved   │ ◄── Triggers verification requirement
-└─────────────────────┘
-          │
-          ▼
-    {Verification}
-          │
-     ┌────┴──────────────────┐
-     │ verify_success()      │  verify_failure()
-     │                       │
-     │ Status →              │  Status → In Progress
-     │ Verified/Closed       │  failed_verification_count += 1
-     │ (terminal state)      │  If count >= 3: item flagged as escalated
-     └───────────────────────┘
-          │
-          ▼
-    {Escalation Check}
-    (_check_and_escalate on each faculty dashboard load)
-          │
-     ┌────┴────┐
-     │ Past    │  Yes → Status = Pinned, escalation_deadline set
-     │ deadline│
-     └────┬────┘
-      No │        Yes → Flagged as escalated (is_escalated), highlighted on dashboards
-          ▼
-   [End: Feedback in terminal state]
-```
-
-### Process Flow:
-
-```
-[Start: Student submits feedback]
-          │
-          ▼
-┌─────────────────────┐
-│ Status = Pending    │ ◄── Default state on creation
-└─────────────────────┘
-          │
-          ▼
-   {Admin reviews}
-          │
-     ┌────┴────┐
-     │ Is it   │
-     │ actionable│
-     └────┬────┘
-      Yes │        No (skip to monitoring)
-          ▼
-┌─────────────────────┐
-│ Status =            │
-│ In Progress         │ ◄── Admin takes action
-└─────────────────────┘
-          │
-          ▼
-   {Admin resolves}
-          │
-     ┌────┴────┐
-     │ Issue   │
-     │ resolved?│
-     └────┬────┘
-      Yes │        No (continue working)
-          ▼
-┌─────────────────────┐
-│ Status = Resolved   │ ◄── Final state
-└─────────────────────┘
-          │
-          ▼
-[End: Feedback closed, student notified on dashboard]
-```
 
 ### State Definitions:
 - **Pending**: The feedback has been submitted by a student but has not yet been reviewed. This is the initial and default state for all newly created feedback records. A `review_deadline` (24 hours from submission) is set automatically.
@@ -1227,252 +959,39 @@ When a resolved item is verified as failed, the workflow loops back to In Progre
 
 ## 13.2 Student Registration Activity Flow
 
-```
-[Start: User navigates to /register]
-          │
-          ▼
-┌─────────────────────┐
-│ Fill registration   │
-│ form: name, roll_no,│
-│ email, password     │
-└─────────────────────┘
-          │
-          ▼
-┌─────────────────────┐
-│ Client-side         │
-│ validation (JS)     │
-│ — required fields?  │
-│ — valid email?      │
-│ — password length≥6?│
-└─────────────────────┘
-          │
-     ┌────┴────┐
-     │ Valid?  │
-     └────┬────┘
-    Yes │         No (show errors, stay on page)
-         ▼
-┌─────────────────────┐
-│ HTTP POST to        │
-│ /register (with     │
-│ csrf_token in form) │
-└─────────────────────┘
-          │
-          ▼
-┌─────────────────────┐
-│ Server checks:      │
-│ — roll_number       │
-│   unique?           │
-│ — email unique?     │
-└─────────────────────┘
-          │
-     ┌────┴────┐
-     │ Both    │
-     │ unique? │
-     └────┬────┘
-    Yes │         No (flash error, return to form)
-         ▼
-┌─────────────────────┐
-│ Hash password       │
-│ (werkzeug.security) │
-└─────────────────────┘
-          │
-          ▼
-┌─────────────────────┐
-│ INSERT INTO users   │
-│ (role='student')    │
-└─────────────────────┘
-          │
-          ▼
-[End: Redirect to /login with success message]
-```
+![Figure 13.2: Activity Diagram - Student Registration](docs/images/04b_activity_student_registration.png)
+
+*Figure 13.2: Activity Diagram - Student Registration*
+
 
 ## 13.3 Admin Filtering Activity Flow
 
-```
-[Start: Admin views dashboard]
-          │
-          ▼
-┌─────────────────────┐
-│ Display all         │
-│ feedback entries    │
-│ (default: no filter)│
-└─────────────────────┘
-          │
-          ▼
-┌─────────────────────┐
-│ Admin applies       │
-│ filters:            │
-│ — category?         │
-│ — status?           │
-│ — rating?           │
-│ — date range?       │
-│ — keyword search?   │
-└─────────────────────┘
-          │
-     ┌────┴────┐
-     │ Any     │
-     │ filters?│
-     └────┬────┘
-    Yes │         No (display all entries)
-         ▼
-┌─────────────────────┐
-│ Build SQL query with│
-│ WHERE clauses for   │
-│ each applied filter │
-└─────────────────────┘
-          │
-          ▼
-┌─────────────────────┐
-│ Execute filtered    │
-│ query; fetch results│
-└─────────────────────┘
-          │
-          ▼
-┌─────────────────────┐
-│ Display matching    │
-│ entries in table    │
-│ with count badge    │
-└─────────────────────┘
-          │
-          ▼
-[End: Admin can click individual entry for detail view]
-```
+This activity diagram describes how an administrator applies multi-criteria filters on the admin dashboard to narrow down feedback entries.
 
----
+![Figure 13.3: Activity Diagram - Admin Dashboard Filtering](docs/images/04c_activity_admin_filtering.png)
+
+*Figure 13.3: Activity Diagram - Admin Dashboard Filtering*
 
 # Chapter 14: ER Diagram
 
 ## 14.1 Textual Description for Diagram Generation
 
 The Entity-Relationship (ER) diagram models the logical structure of the database, showing four core entities (tables), their attributes (columns), primary keys, foreign keys, and relationships between entities. This project's database consists of four entities with well-defined referential integrity constraints.
+![Figure 14.1: Entity-Relationship Diagram](docs/images/05_er_diagram.png)
+
+*Figure 14.1: Entity-Relationship Diagram*
 
 ### Entity: User
 
-```
-┌──────────────────────────────────────┐
-│                USER                  │
-├──────────────────────────────────────┤
-│ 🔑 id          INT (PK, AI)         │
-│    name        VARCHAR(100)         │
-│    email       VARCHAR(100) ╌UNIQUE║
-│    roll_number VARCHAR(50) NULL ╌UNIQUE║
-│    password_hash VARCHAR(255)       │
-│    role        ENUM('student','admin')│
-│    created_at  TIMESTAMP            │
-└──────────────────────────────────────┘
-
-### Entity: Faculty
-
-```
-┌──────────────────────────────────────┐
-│              FACULTY                 │
-├──────────────────────────────────────┤
-│ 🔑 id          INT (PK, AI)         │
-│    name        VARCHAR(100)         │
-│    email       VARCHAR(100) ╌UNIQUE║
-│    faculty_id  VARCHAR(50) ╌UNIQUE║
-│    department  VARCHAR(100)         │
-│    subject_taught VARCHAR(200)      │
-│    password_hash VARCHAR(255)       │
-│    role        ENUM('faculty')      │
-│    created_at  TIMESTAMP            │
-└──────────────────────────────────────┘
-
 ### Entity: Feedback
-
-```
-┌──────────────────────────────────────┐
-│              FEEDBACK                │
-├──────────────────────────────────────┤
-│ 🔑 id          INT (PK, AI)         │
-│ 🔗 student_id  INT (FK → user.id)   │
-│ 🔗 resolved_by_faculty_id INT (FK→faculty.id) NULL │
-│    category    ENUM('Food','Faculty' │
-│                  ,'Infrastructure',  │
-│                  'Events','Other')   │
-│    rating      TINYINT (1-5)        │
-│    comment     TEXT                 │
-│    is_anonymous BOOLEAN DEFAULT 0   │
-│    status      ENUM('Pending',       │
-│                  'In Progress',      │
-│                  'Resolved',         │
-│                  'Pinned',           │
-│                  'Verified/Closed',  │
-│                  'Verification Failed')│
-│                  DEFAULT 'Pending'  │
-│    department     VARCHAR(100) NULL  │
-│    subject        VARCHAR(200) NULL  │
-│    semester_year  VARCHAR(20) NULL   │
-│    review_deadline      TIMESTAMP NULL│
-│    escalation_deadline  TIMESTAMP NULL│
-│    failed_verification_count TINYINT DEFAULT 0│
-│    created_at  TIMESTAMP            │
-│    updated_at  TIMESTAMP (nullable) │
-└──────────────────────────────────────┘
-
-### Entity: Comment
-
-```
-┌──────────────────────────────────────┐
-│              COMMENT                 │
-├──────────────────────────────────────┤
-│ 🔑 id          INT (PK, AI)         │
-│ 🔗 feedback_id  INT (FK → feedback.id)│
-│ 🔗 parent_id     INT (FK → comment.id) NULL│
-│    author_type   ENUM('faculty','student')│
-│    author_id     INT                │
-│    text          TEXT               │
-│    created_at    TIMESTAMP          │
-└──────────────────────────────────────┘
-
 ### Relationships
-
 | Relationship | Type | Description |
 |---|---|---|
 | User → Feedback | One-to-Many (1:N) | Each User can submit zero or more Feedback entries. FK: `feedback.student_id` → `users.id`. ON DELETE RESTRICT prevents orphaned feedback. |
 | Faculty → Feedback (resolved) | One-to-Many (1:N) | A faculty member can resolve multiple feedback items. FK: `feedback.resolved_by_faculty_id` → `faculty.id`. NULL allows unassigned resolved items. |
 | Comment → Feedback | Many-to-One (N:1) | Each comment belongs to exactly one feedback item. FK: `comment.feedback_id` → `feedback.id`. |
 | Comment → Comment (self-ref) | One-to-Many (nested replies) | A parent comment can have many child reply comments. Self-referencing FK: `comment.parent_id` → `comment.id`. Enables Reddit-style threaded discussions. |
-
 ### ER Diagram Structure (for generation in StarUML or similar tool):
-
-```
-┌──────────┐       1        Many      ┌──────────┐
-│   USER   │◆─────────────────────◆───│ FEEDBACK │
-├──────────┤                          ├──────────┤
-| 🔑 id    |                          | 🔑 id     |
-| name     |                          | 🔗student_id│
-| email ╌U║                          | 🔗resolved_by_faculty_id│
-| roll_no╌U║                          | category  |
-| pw_hash  |                          | rating    |
-| role     |       1        Many      | comment   |
-└──────────┘                            | is_anon   │
-              ┌──────────┐             | status    │
-              │ FACULTY  │◆─────       | department│
-              ├──────────┤             | subject   │
-              | 🔑 id    |             | review_deadline│
-              | faculty_id│            | failed_verif_count│
-              | department│            | created   │
-              | subject_t │            | updated   │
-              └──────────┘             └──────────┘
-
-┌──────────┐       Many      ┌──────────┐
-│ FEEDBACK │◆─────────────◆──│ COMMENT  │
-├──────────┤                 ├──────────┤
-| 🔑 id    |                 | 🔑 id     |
-| ...      |                 | 🔗feedback_id│
-└──────────┘                 | 🔗parent_id (self-ref)│
-                             | author_type │
-                             | author_id │
-                             | text      │
-                             └──────────┘
-
-PK = Primary Key (🔑)
-FK = Foreign Key (🔗)
-U  = Unique Constraint ╌U║
-1:N / N:1 = Cardinality notation
-```
-
 ### Cardinality Interpretation:
 - **User → Feedback (1:N)**: A single user record is referenced by zero, one, or many feedback records. Each individual feedback entry points back to exactly one user via `student_id`.
 - **Faculty → Feedback resolved (1:N)**: A faculty member can resolve multiple items; each resolved item references at most one resolver.
