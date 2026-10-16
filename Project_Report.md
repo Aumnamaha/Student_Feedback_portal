@@ -652,7 +652,7 @@ Custom decorators (`@login_required`, `@admin_required`) wrap route handler func
 
 # Chapter 10: Use Case Diagram
 
-## 10.1 Textual Description for Diagram Generation
+## 10.1 Overview and Description
 
 The use case diagram illustrates the interactions between actors (users) and system functionalities (use cases). There are three primary actors in this system: **Student**, **Admin**, and **Faculty**. A tertiary implicit actor is the **Database**, which stores and retrieves data as needed by the system.
 ![Figure 10.1: Use Case Diagram of the Student Feedback Management System](docs/images/01_use_case_diagram.png)
@@ -696,7 +696,7 @@ The use case diagram illustrates the interactions between actors (users) and sys
 
 # Chapter 11: Class Diagram
 
-## 11.1 Textual Description for Diagram Generation
+## 11.1 Overview and Description
 
 The class diagram defines the static structure of the system's object model — four classes are defined as SQLAlchemy ORM models in `models.py`: `User`, `Faculty`, `Feedback`, and `Comment`. These classes encapsulate both data (attributes mapped to database columns) and behavior (methods for validation, relationship navigation, verification lifecycle, and PII-safe serialization).
 ![Figure 11.1: Class Diagram (User, Faculty, Feedback, Comment)](docs/images/02_class_diagram.png)
@@ -790,7 +790,7 @@ The class diagram defines the static structure of the system's object model — 
 | Comment → Comment (self-ref) | One-to-Many (nested replies) | A parent comment can have many child reply comments. Self-referencing FK: `parent_id` → `comment.id`. Enables Reddit-style threaded discussions. |
 | User/Faculty.password_hash | Encapsulation | Password hashing is encapsulated within both User and Faculty classes through werkzeug.security methods — external code never accesses or manipulates raw passwords. |
 
-### Cardinality Notation (for diagram generation)
+### Cardinality Notation
 - **User** ────(1)────◆────(Many)──── **Feedback**
 - The diamond (◆) indicates a strong relationship where Feedback cannot exist without an associated User (referential integrity enforced by foreign key constraint).
 - Each User can have zero or more associated Feedback entries (a newly registered student with no submitted feedback still has a valid User record with an empty `feedback_entries` collection).
@@ -841,46 +841,20 @@ This sequence shows multi-role authentication followed by the faculty dashboard 
 
 ### Sequence Steps:
 
-```
-Faculty → Frontend: Enter email and password on /login; click Login (CSRF token included)
-Frontend → Flask Route Handler (auth/routes.py::login): HTTP POST with credentials + csrf_token
-
-alt Credential matches User table
-    ORM Model (User): SELECT * FROM users WHERE email = ?
-    Check password_hash match via werkzeug.check_password_hash()
-    Set session['user_id'], session['role']='student'/'admin'
-    Redirect based on role → /dashboard or /admin/dashboard
-else Credential matches Faculty table
-    ORM Model (Faculty): SELECT * FROM faculty WHERE email = ?
-    Check password_hash match via werkzeug.check_password_hash()
-    Set session['faculty_id'], session['role']='faculty', session['name']
-    Redirect to /faculty/dashboard
-else No match in either table
-    Flash "Invalid credentials" (non-specific, prevents enumeration)
-    Stay on login page
-
-────────── Faculty Dashboard Load ──────────
-
-Faculty → Frontend: GET /faculty/dashboard
-Frontend → Flask Route Handler (faculty/routes.py::dashboard): @login_required + @faculty_required
-
-Flask Route Handler → ORM Model: g.faculty = db.session.get(Faculty, session['faculty_id'])
-Flask Route Handler → Flask Route Handler: _check_and_escalate() — find overdue items in faculty's department
-                                          where review_deadline passed and escalation_deadline is null.
-                                          Set status='Pinned', escalation_deadline=now+3 days for each.
-
-Flask Route Handler → ORM Model: Feedback.faculty_query(session, department=faculty.department, subject=faculty.subject_taught)
-                                  Filters: rating != 5, department match
-                                  Orders by: subject_match DESC, created_at DESC (or pinned first if no subject filter)
-
-ORM Model → Database Session: SELECT * FROM feedback WHERE department=? AND rating!=5 ORDER BY ...
-Database Session → MySQL/SQLite: Return matching rows
-ORM Model → Flask Route Handler: [fb.to_faculty_dict(faculty_subject=faculty.subject_taught) for fb in results]
-                                  Each dict: id, category, rating, comment, status, class/year from roll_number,
-                                  subject_match flag, is_escalated flag. NO PII exposed.
-
-Flask Route Handler → Frontend: Render faculty_dashboard.html with feedback_list, pending_count, escalated_count
-Frontend → Faculty: Display department table with stats cards, countdown timers, escalation badges
+1. **Faculty enters email and password** on `/login`; clicks Login (CSRF token included in form).
+2. **Frontend POSTs to `/login`** (`blueprints/auth/routes.py::login`) with credentials and `csrf_token`.
+3. **auth/login tries User table first**: queries `users WHERE email = ?` via `User.query.filter_by(email=email).first()`; if match, calls `user.check_password(password)` (uses `werkzeug.check_password_hash`); sets `session['user_id']`, `session['role']=user.role`; redirects based on role.
+4. **If User didn't match, tries Faculty table**: queries `faculty WHERE email = ?` via `Faculty.query.filter_by(email=email).first()`; if match, calls `faculty.check_password(password)`; sets `session['faculty_id']`, `session['role']='faculty'`, `session['name']=faculty.name`; redirects to `/faculty/dashboard`.
+5. **If neither table matches**: flashes "Invalid email or password." (non-specific, prevents enumeration) and stays on login page.
+6. **GET `/faculty/dashboard`** — frontend navigates to faculty dashboard after successful authentication.
+7. **Route handler `dashboard()`** (`blueprints/faculty/routes.py::dashboard`) is protected by `@login_required` (checks `'user_id' or 'faculty_id' in session`) and `@faculty_required` (checks `session['role']=='faculty'`).
+8. **`_check_and_escalate()` runs**: queries feedback where `department == faculty.department`, `review_deadline` has passed, `escalation_deadline IS NULL`, status not `'Verified/Closed'` or `'Verification Failed'`; sets `status='Pinned'` and `escalation_deadline=now+3 days` for each overdue item; commits changes.
+9. **`Feedback.faculty_query()` called** with `department=faculty.department, subject=faculty.subject_taught`; filters to exclude 5-star ratings (`rating != 5`).
+10. **SQL SELECT** executes: `SELECT * FROM feedback WHERE department=? AND rating!=5`, ordered by `subject_match DESC, created_at DESC` (or pinned first if no subject filter).
+11. **Matching rows returned** from the database query.
+12. **`to_faculty_dict()` serializes each row**: hides student PII — only class/year derived from roll_number is shown; includes id, category, rating, comment, status, subject_match flag, and is_escalated flag.
+13. **`faculty_dashboard.html` rendered** with `feedback_list`, `pending_count`, and `escalated_count` passed as template context variables.
+14. **Dashboard displayed**: stats cards (total feedback, pending review count, escalated item count), department-filtered feedback table with countdown timers for deadlines, and escalation badges for overdue items.
 
 ## 12.3 Post Comment (Faculty, AJAX)
 
@@ -1059,9 +1033,9 @@ This activity diagram describes how an administrator applies multi-criteria filt
 
 # Chapter 14: ER Diagram
 
-## 14.1 Textual Description for Diagram Generation
+## 14.1 Overview and Description
 
-The Entity-Relationship (ER) diagram models the logical structure of the database, showing four core entities (tables), their attributes (columns), primary keys, foreign keys, and relationships between entities. This project's database consists of four entities with well-defined referential integrity constraints.
+The Entity-Relationship (ER) diagram models the logical structure of the database, showing four core entities (tables), their attributes (columns), primary keys, foreign keys, and relationships between entities. The database consists of four entities with well-defined referential integrity constraints.
 ![Figure 14.1: Entity-Relationship Diagram](docs/images/05_er_diagram.png)
 
 *Figure 14.1: Entity-Relationship Diagram*
@@ -1132,7 +1106,6 @@ The Entity-Relationship (ER) diagram models the logical structure of the databas
 | Faculty → Feedback (resolved) | One-to-Many (1:N) | A faculty member can resolve multiple feedback items. FK: `feedback.resolved_by_faculty_id` → `faculty.id`. NULL allows unassigned resolved items. |
 | Comment → Feedback | Many-to-One (N:1) | Each comment belongs to exactly one feedback item. FK: `comment.feedback_id` → `feedback.id`. |
 | Comment → Comment (self-ref) | One-to-Many (nested replies) | A parent comment can have many child reply comments. Self-referencing FK: `comment.parent_id` → `comment.id`. Enables Reddit-style threaded discussions. |
-### ER Diagram Structure (for generation in StarUML or similar tool):
 ### Cardinality Interpretation:
 - **User → Feedback (1:N)**: A single user record is referenced by zero, one, or many feedback records. Each individual feedback entry points back to exactly one user via `student_id`.
 - **Faculty → Feedback resolved (1:N)**: A faculty member can resolve multiple items; each resolved item references at most one resolver.
