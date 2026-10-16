@@ -739,8 +739,7 @@ The class diagram defines the static structure of the system's object model — 
 - `check_password(raw_password)`: Verifies a provided password against the stored hash using check_password_hash(). Returns boolean.
 - `get_resolved_feedback()`: SQLAlchemy relationship returning all Feedback objects where this faculty is the resolver (resolved_by_faculty_id).
 
-### Class: Comment
-
+### Class: Feedback
 
 **Attributes**:
 - `id`: Primary key, auto-incremented integer uniquely identifying each feedback entry.
@@ -749,7 +748,14 @@ The class diagram defines the static structure of the system's object model — 
 - `rating`: TINYINT integer between 1 and 5 (inclusive). Provides quantitative measure of satisfaction for the feedback category.
 - `comment`: Free-text field allowing students to provide detailed descriptions of their concerns or suggestions. Stored as TEXT type in MySQL to accommodate arbitrarily long comments.
 - `is_anonymous`: Boolean flag indicating whether the student wishes to remain anonymous. When True, admin-facing views suppress the submitter's identity at the query layer.
-- `status`: ENUM string tracking resolution progress through three states: 'Pending' (newly submitted), 'In Progress' (under review/action by administration), 'Resolved' (issue addressed). Default value on creation is 'Pending'.
+- `status`: ENUM string tracking resolution progress through states: 'Pending', 'In Progress', 'Resolved', 'Pinned', 'Verified/Closed', 'Verification Failed'. Default value on creation is 'Pending'.
+- `department`: VARCHAR(100) NULL — department context for Faculty/Infrastructure feedback categories.
+- `subject`: VARCHAR(200) NULL — subject context for targeted faculty matching.
+- `semester_year`: VARCHAR(20) NULL — academic semester/year of the student submitter.
+- `resolved_by_faculty_id`: Foreign key referencing `faculty.id` (nullable). Records which faculty member resolved this item.
+- `review_deadline`: DATETIME nullable — 24 hours after submission; used for escalation checks.
+- `escalation_deadline`: DATETIME nullable — set by `_check_and_escalate()` when review deadline passes without action.
+- `failed_verification_count`: TINYINT DEFAULT 0 — tracks how many times verification has failed.
 - `created_at`: Timestamp of when feedback was originally submitted, set automatically on insertion.
 - `updated_at`: Timestamp of the most recent status change, updated automatically whenever admin modifies the status field.
 
@@ -759,6 +765,20 @@ The class diagram defines the static structure of the system's object model — 
 - `to_faculty_dict(faculty_subject)`: Returns an anonymized dict safe for faculty views — includes class/year derived from roll_number (never name/email/roll), subject match flag, escalation flags. Never joins users table.
 - `to_admin_dict()`: Returns a dict for admin views — attaches student PII only when is_anonymous=False; otherwise returns "Anonymous" for all identity fields.
 - `__repr__()`: Python string representation returning formatted string like `<Feedback 1: Food(4/5)>`.
+
+### Class: Comment
+
+**Attributes**:
+- `id`: Primary key, auto-incremented integer uniquely identifying each comment record.
+- `feedback_id`: Foreign key referencing the `id` of the Feedback item this comment belongs to. Ensures every comment is tied to a valid feedback entry.
+- `parent_id`: Integer foreign key referencing `comment.id` (nullable). Enables self-referencing nested replies — a parent comment can have many child reply comments.
+- `author_type`: ENUM string ('faculty' or 'student') indicating whether the commenter is a faculty member or the submitting student.
+- `author_id`: Integer ID of the author, corresponding to either a `faculty.id` (for faculty) or `users.id` (for students).
+- `text`: Free-text content of the comment. Stored as TEXT type in MySQL to support arbitrarily long messages.
+- `created_at`: Timestamp of when the comment was created, automatically set on insertion.
+
+**Methods**:
+- `__repr__()`: Python string representation returning formatted string like `<Comment N: Feedback M>`.
 
 ### Class Relationships
 
@@ -787,6 +807,18 @@ This sequence diagram describes the interaction flow when an authenticated stude
 *Figure 12.1: Sequence Diagram - Submit Feedback*
 
 ### Sequence Steps:
+
+1. **Student → Frontend**: Click "Submit Feedback" button on `student_dashboard.html` form.
+2. **Frontend → Student**: Client-side validation (required fields, rating 1-5 range).
+3. **Frontend → Flask Route Handler**: HTTP POST to `/dashboard` with form data (`category`, `rating`, `comment`, anonymous checkbox, and conditional fields: `department`, `subject`, `semester_year`).
+4. **Flask Route Handler → Flask Route Handler**: Verify session['user_id'] exists (enforced by `@login_required` decorator).
+5. **Flask Route Handler → ORM Model**: Create Feedback object with `student_id=session['user_id']`, parsed form fields, and `review_deadline=datetime.now(UTC) + 24h`.
+6. **ORM Model → Database Session**: `db.session.add(feedback_obj)`.
+7. **Database Session → MySQL/SQLite**: INSERT INTO feedback VALUES (…).
+8. **MySQL/SQLite → Database Session**: Confirmation of insert (row ID assigned).
+9. **Database Session → Flask Route Handler**: `db.session.commit()` returns success.
+10. **Flask Route Handler → Frontend**: Redirect to `/dashboard` with flash message "Feedback submitted successfully!".
+11. **Frontend → Student**: Display updated dashboard showing new entry in history table.
 
 ### Alternative Flow (Validation Failure):
 If any validation fails (e.g., rating outside 1–5, missing required fields), the Flask route handler returns an error response with appropriate flash messages, and the frontend displays the errors without committing to the database.
@@ -853,6 +885,17 @@ Frontend → Faculty: Display department table with stats cards, countdown timer
 ## 12.3 Post Comment (Faculty, AJAX)
 
 This sequence describes how a matching faculty member posts a comment on a feedback item via an AJAX JSON POST request from the frontend.
+
+1. **Faculty/Student → Frontend**: Type comment in textarea; click Post button.
+2. **Frontend → JavaScript**: Read CSRF token from `<meta name="csrf-token">` element.
+3. **Frontend → Flask Route Handler**: HTTP POST to `/faculty/feedback/<id>/comment` with JSON body `{"text": "..."}` and X-CSRFToken header.
+4. **Flask Route Handler → Flask Route Handler**: Verify session['role']=='faculty' AND feedback department matches faculty department.
+5. **Flask Route Handler → ORM Model (Comment)**: Create new Comment(feedback_id=id, author_type='faculty', author_id=faculty.id, text=text).
+6. **ORM Model → Database Session**: `db.session.add(comment)`; `db.session.commit()`.
+7. **Database Session → MySQL/SQLite**: INSERT INTO comment VALUES (…).
+8. **alt JSON request (AJAX)**: Flask Route Handler → Frontend: 201 `{"id": N, "text": "...", "created_at": "..."}`; Frontend → JavaScript: Append comment div to `.comment-thread` element.
+9. **else Form POST (non-AJAX)**: Flask Route Handler → Frontend: Flash message + redirect.
+
 ![Figure 12.3: Sequence Diagram - Post Comment](docs/images/03c_sequence_post_comment.png)
 
 *Figure 12.3: Sequence Diagram - Post Comment*
@@ -863,11 +906,6 @@ This sequence describes how a matching faculty member posts a comment on a feedb
 3. **Flask Route Handler** (`blueprints/faculty/routes.py::post_comment`) — JSON POST handler for comment creation
 4. **ORM Model** (`Comment` class in `models.py`) — Creates new Comment record
 5. **Database Session / MySQL-SQLite** — Persistent storage
-
-### Sequence Steps:
-
-
-```
 
 ## 12.4 Verify Resolved Feedback (Faculty or Admin)
 
@@ -883,9 +921,17 @@ This sequence describes the verification workflow when a faculty member or admin
 4. **ORM Model** (`Feedback.verify_success()`, `Feedback.verify_failure()` in `models.py`) — Verification lifecycle methods
 5. **Database Session / MySQL-SQLite** — Persistent storage
 
-### Sequence Steps
+### Sequence Steps:
 
-```
+1. **Admin/Faculty → Frontend**: Click "✓ Verify" or "✗ Fail" on a Resolved feedback item.
+2. **Frontend → Flask Route Handler**: HTTP POST to `/admin/feedback/<id>/verify-success` OR `/faculty/feedback/<id>/verify` with `action='success'/'failure'` and csrf_token.
+3. **Flask Route Handler → ORM Model (Feedback)**: Load feedback (`fb = db.session.get(Feedback, id)`); verify status == 'Resolved' before calling verification methods.
+4. **alt Action = 'success'**: ORM Model calls `fb.verify_success()` → sets status = 'Verified/Closed'.
+5. **else Action = 'failure'**: ORM Model calls `fb.verify_failure()` → increments `failed_verification_count` by 1, sets status = 'In Progress'; if count >= 3, item is flagged as escalated.
+6. **ORM Model → Database Session**: `db.session.commit()`.
+7. **Database Session → MySQL/SQLite**: UPDATE feedback SET status=?, failed_verification_count=? WHERE id=?.
+8. **Flask Route Handler → Frontend**: Flash message confirming outcome.
+9. **Frontend → Admin/Faculty**: Redirect back to detail page; updated status badge shown.
 
 ## 12.5 Admin Update Feedback Status
 
@@ -935,6 +981,17 @@ This activity diagram describes the state transitions that a feedback entry unde
 
 ### Process Flow:
 
+1. **Student submits feedback** → status set to `Pending`; `review_deadline` = submission time + 24 hours.
+2. **Faculty or Admin reviews item** on their dashboard (department-filtered for faculty, all items for admin).
+3. **Status transitions to In Progress** — Faculty or Admin marks the item as being actively addressed; `resolved_by_faculty_id` recorded if a faculty member does it.
+4. **Issue is worked on** — may involve coordination between stakeholders; status remains In Progress.
+5. **Faculty/Admin resolves issue** → status set to `Resolved`; triggers verification requirement.
+6. **Verification step**: An Admin or Faculty member evaluates whether the resolution was adequate.
+   - If adequate: calls `verify_success()` → status transitions to `Verified/Closed` (terminal state).
+   - If inadequate: calls `verify_failure()` → status reverts to `In Progress`, `failed_verification_count` incremented by 1.
+7. **Failed-verification loop**: Each verification failure increments the counter; when `failed_verification_count >= 3`, the item is flagged as escalated on next dashboard load.
+8. **Escalation check** (`_check_and_escalate()`): Runs on every Faculty/Admin dashboard load — finds items where `review_deadline` has passed without status transition, sets status to `Pinned` and `escalation_deadline` = now + 3 days.
+9. **Verified/Closed**: Terminal state — no further transitions; comments are disabled on the detail page.
 
 ### State Definitions:
 - **Pending**: The feedback has been submitted by a student but has not yet been reviewed. This is the initial and default state for all newly created feedback records. A `review_deadline` (24 hours from submission) is set automatically.
@@ -959,6 +1016,20 @@ When a resolved item is verified as failed, the workflow loops back to In Progre
 
 ## 13.2 Student Registration Activity Flow
 
+This activity diagram describes the flow when a new student registers for an account through the `/register` endpoint in `blueprints/auth/routes.py`. The process includes client-side validation, uniqueness checks on both roll number and email, password hashing, and database insertion.
+
+1. **User navigates to** `/register` page (`register.html`).
+2. **User fills registration form**: enters name, roll number, email address, and password (minimum 6 characters).
+3. **Client-side validation** (JavaScript): checks required fields are filled, email format is valid, and password meets minimum length requirement.
+4. **If validation fails**: display inline error messages; user stays on the registration page to correct inputs.
+5. **If validation passes**: form submits via HTTP POST to `/register` with all fields plus `csrf_token` included in the form data.
+6. **Server receives POST request** and validates CSRF token (Flask-WTF).
+7. **Uniqueness check**: Query `users` table for existing record with matching `roll_number` AND matching `email`. If either already exists, flash an error message and return to registration form.
+8. **Hash password**: Call `generate_password_hash(password)` via werkzeug.security (PBKDF2-SHA256).
+9. **Create User object** with `role='student'` and insert into database: `INSERT INTO users (name, roll_number, email, password_hash, role) VALUES (…)`.
+10. **Commit transaction**: `db.session.commit()`;
+11. **Flash success message** "Registration successful! Please login." and redirect to `/login`.
+
 ![Figure 13.2: Activity Diagram - Student Registration](docs/images/04b_activity_student_registration.png)
 
 *Figure 13.2: Activity Diagram - Student Registration*
@@ -966,7 +1037,21 @@ When a resolved item is verified as failed, the workflow loops back to In Progre
 
 ## 13.3 Admin Filtering Activity Flow
 
-This activity diagram describes how an administrator applies multi-criteria filters on the admin dashboard to narrow down feedback entries.
+This activity diagram describes how an administrator applies multi-criteria filters on the admin dashboard to narrow down feedback entries. The filtering logic is implemented in `blueprints/admin/__init__.py` and supports five independent filter dimensions.
+
+1. **Admin views** `/admin/dashboard` — default display shows all feedback entries (no filter applied).
+2. **Admin selects filter criteria** from the filter bar:
+   - **Category**: Dropdown selection (Food / Faculty / Infrastructure / Events / Other) — filters on `feedback.category`.
+   - **Status**: Dropdown selection (Pending / In Progress / Resolved) — filters on `feedback.status`.
+   - **Rating**: Exact numeric match (1–5) — filters on `feedback.rating`.
+   - **Date range**: Two date pickers (`date_from`, `date_to`) — filters on `feedback.created_at BETWEEN ? AND ?`.
+   - **Keyword search**: Text input — performs `LIKE '%keyword%'` search across the `comment` column (case-insensitive).
+3. **Admin clicks Apply Filters** or triggers filter via AJAX as criteria change.
+4. **Frontend sends request** with selected filter parameters to `/admin/dashboard?category=...&status=...&rating=...&date_from=...&date_to=...&keyword=...`.
+5. **Flask route handler builds query**: Starts with base `Feedback.query`, applies each non-empty filter as a `.filter()` clause using SQLAlchemy's chained query builder.
+6. **Execute query** and return filtered result set to frontend.
+7. **Frontend re-renders** the feedback table with only matching entries; pagination controls update accordingly.
+8. **Admin can clear all filters** — resets form fields and reloads unfiltered view.
 
 ![Figure 13.3: Activity Diagram - Admin Dashboard Filtering](docs/images/04c_activity_admin_filtering.png)
 
@@ -983,7 +1068,63 @@ The Entity-Relationship (ER) diagram models the logical structure of the databas
 
 ### Entity: User
 
+| Attribute | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | INT | PK, AUTO_INCREMENT | Unique identifier for each user account |
+| `name` | VARCHAR(100) | NOT NULL | Full name of the user (student or admin) |
+| `email` | VARCHAR(100) | UNIQUE, NOT NULL | Email address used for authentication and identification |
+| `roll_number` | VARCHAR(50) | UNIQUE, NULL | Academic roll number assigned to students; NULL for admin accounts |
+| `password_hash` | VARCHAR(255) | NOT NULL | Bcrypt/PBKDF2-hashed password generated by werkzeug.security during registration |
+| `role` | ENUM('student','admin') | NOT NULL, DEFAULT 'student' | User role — determines which routes and features are accessible |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Account creation timestamp, automatically set on insertion |
+
+### Entity: Faculty
+
+| Attribute | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | INT | PK, AUTO_INCREMENT | Unique identifier for each faculty account |
+| `name` | VARCHAR(100) | NOT NULL | Full name of the faculty member |
+| `email` | VARCHAR(100) | UNIQUE, NOT NULL | Email address used for authentication |
+| `faculty_id` | VARCHAR(50) | UNIQUE, NOT NULL | Unique faculty identifier (e.g., "FAC-001"), set by admin during account creation |
+| `department` | VARCHAR(100) | NOT NULL | Department assignment determining which feedback the faculty can view |
+| `subject_taught` | VARCHAR(200) | NOT NULL | Subject(s) taught, used to prioritize matching feedback items on the dashboard |
+| `password_hash` | VARCHAR(255) | NOT NULL | Bcrypt/PBKDF2-hashed password generated by werkzeug.security |
+| `role` | ENUM('faculty') | NOT NULL, DEFAULT 'faculty' | Always 'faculty'; faculty accounts are created by admins only — no self-registration |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Account creation timestamp |
+
 ### Entity: Feedback
+
+| Attribute | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | INT | PK, AUTO_INCREMENT | Unique identifier for each feedback entry |
+| `student_id` | INT | FK → users.id, NOT NULL | References the student who submitted this feedback; ON DELETE RESTRICT prevents orphaned entries |
+| `category` | ENUM('Food','Faculty','Infrastructure','Events','Other') | NOT NULL | Feedback category used for filtering and reporting |
+| `rating` | TINYINT | NOT NULL, CHECK 1-5 | Numerical satisfaction rating from 1 (worst) to 5 (best) |
+| `comment` | TEXT | NOT NULL | Free-text description of the student's concern or suggestion |
+| `is_anonymous` | BOOLEAN | DEFAULT FALSE | When TRUE, admin-facing queries suppress submitter identity at query level |
+| `status` | ENUM('Pending','In Progress','Resolved','Pinned','Verified/Closed','Verification Failed') | NOT NULL, DEFAULT 'Pending' | Resolution workflow state |
+| `department` | VARCHAR(100) | NULL | Department context for Faculty/Infrastructure categories |
+| `subject` | VARCHAR(200) | NULL | Subject context for targeted faculty matching |
+| `semester_year` | VARCHAR(20) | NULL | Academic semester/year of the submitting student |
+| `resolved_by_faculty_id` | INT | FK → faculty.id, NULL | Records which faculty member resolved this item |
+| `review_deadline` | DATETIME | NULL | 24 hours after submission; used for escalation checks |
+| `escalation_deadline` | DATETIME | NULL | Set by `_check_and_escalate()` when review deadline passes without action |
+| `failed_verification_count` | TINYINT | DEFAULT 0 | Tracks how many times verification has failed; >= 3 triggers escalation flag |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Feedback submission timestamp |
+| `updated_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP, ON UPDATE | Most recent status change timestamp |
+
+### Entity: Comment
+
+| Attribute | Type | Constraints | Description |
+|---|---|---|---|
+| `id` | INT | PK, AUTO_INCREMENT | Unique identifier for each comment record |
+| `feedback_id` | INT | FK → feedback.id, NOT NULL | References the feedback item this comment belongs to |
+| `parent_id` | INT | FK → comment.id, NULL | Self-referencing foreign key enabling nested replies; NULL for top-level comments |
+| `author_type` | ENUM('faculty','student') | NOT NULL | Indicates whether the commenter is a faculty member or the submitting student |
+| `author_id` | INT | NOT NULL | ID of the author — corresponds to `faculty.id` (for faculty) or `users.id` (for students) |
+| `text` | TEXT | NOT NULL | Free-text content of the comment; supports arbitrarily long messages |
+| `created_at` | TIMESTAMP | DEFAULT CURRENT_TIMESTAMP | Comment creation timestamp |
+
 ### Relationships
 | Relationship | Type | Description |
 |---|---|---|
