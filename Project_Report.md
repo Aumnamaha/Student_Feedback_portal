@@ -27,40 +27,88 @@ Object-Oriented Software Engineering (OOSE) Lab
 
 ---
 
+<div style="page-break-after: always;"></div>
+
+# Certificate
+
+This is to certify that **[Student Name]**, Roll No. **[Roll Number]**, of **[Section]**, Department of Computer Science & Engineering / Artificial Intelligence & Machine Learning, **[College/University Name]**, has satisfactorily completed the project **"Student Feedback Management System"** for the course **Object-Oriented Software Engineering (OOSE) Lab** during the academic year **2025–2026**.
+
+<br><br>
+
+Project Guide / Instructor: ____________________  [Faculty Name]
+
+<br><br>
+
+Head of Department: _____________________________
+
+<br><br>
+
+Date: _______________  [Submission Date]
+
+<div style="page-break-after: always;"></div>
+
+# Declaration
+
+I hereby declare that the work presented in this project report entitled **"Student Feedback Management System"** is an original effort carried out by me, **[Student Name]** (Roll No. **[Roll Number]**), as part of the course requirements for Object-Oriented Software Engineering (OOSE) Lab at **[College/University Name]**.
+
+The material embodied in this report has not been submitted to any other institution or university for the award of any degree or diploma. All sources of information and references used in this work have been duly acknowledged and cited herein.
+
+<br><br>
+
+Signature: _____________________________
+
+Name: [Student Name]
+
+Roll No.: [Roll Number]
+
+Date: [Submission Date]
+
+<div style="page-break-after: always;"></div>
+
+# Acknowledgement
+
+I would like to express my sincere gratitude to **[Faculty Name]**, Project Guide / Instructor for the Object-Oriented Software Engineering (OOSE) Lab course, for their invaluable guidance, constructive feedback, and continuous support throughout the development of this project. Their expertise in software engineering principles was instrumental in shaping the design and implementation of the Student Feedback Management System.
+
+I also thank the Department of Computer Science & Engineering / Artificial Intelligence & Machine Learning at **[College/University Name]** for providing the infrastructure and academic environment that enabled this project to take shape. Finally, I am grateful to my family and friends for their encouragement and patience during the course of this work.
+
+<div style="page-break-after: always;"></div>
+
 # Table of Contents
 
-| No. | Section                                                        | Page |
-|-----|----------------------------------------------------------------|------|
-| 1   | Title Page                                                     | i    |
-| 2   | Certificate                                                    | ii   |
-| 3   | Declaration                                                    | iii  |
-| 4   | Acknowledgement                                                | iv   |
-| 5   | Abstract                                                       | v    |
-| 6   | Table of Contents                                              | vi   |
-| 7   | Introduction                                                   | 1    |
-| 8   | Problem Statement                                              | 3    |
-| 9   | Objectives                                                     | 4    |
-| 10  | Existing System                                                | 5    |
-| 11  | Proposed System                                                | 7    |
-| 12  | Scope                                                          | 9    |
-| 13  | Functional Requirements                                        | 10   |
-| 14  | Non-Functional Requirements                                    | 12   |
-| 15  | System Architecture                                            | 14   |
-| 16  | Use Case Diagram                                               | 17   |
-| 17  | Class Diagram                                                  | 19   |
-| 18  | Sequence Diagrams                                              | 21   |
-| 19  | Activity Diagrams                                              | 23   |
-| 20  | ER Diagram                                                     | 25   |
-| 21  | Database Design                                                | 26   |
-| 22  | UI Design                                                      | 28   |
-| 23  | Implementation                                                 | 30   |
-| 24  | Testing                                                        | 34   |
-| 25  | Results                                                        | 37   |
-| 26  | Advantages                                                     | 39   |
-| 27  | Limitations                                                    | 40   |
-| 28  | Future Enhancements                                            | 41   |
-| 29  | Conclusion                                                     | 43   |
-| 30  | References                                                     | 44   |
+| No. | Section |
+|-----|---------|
+| 1   | Title Page |
+| 2   | Certificate |
+| 3   | Declaration |
+| 4   | Acknowledgement |
+| 5   | Abstract |
+| 6   | Table of Contents |
+| 7   | Chapter 1: Introduction |
+| 8   | Chapter 2: Problem Statement |
+| 9   | Chapter 3: Objectives |
+| 10  | Chapter 4: Existing System |
+| 11  | Chapter 5: Proposed System |
+| 12  | Chapter 6: Scope |
+| 13  | Chapter 7: Functional Requirements |
+| 14  | Chapter 8: Non-Functional Requirements |
+| 15  | Chapter 9: System Architecture |
+| 16  | Chapter 10: Use Case Diagram |
+| 17  | Chapter 11: Class Diagram |
+| 18  | Chapter 12: Sequence Diagrams |
+| 19  | Chapter 13: Activity Diagrams |
+| 20  | Chapter 14: ER Diagram |
+| 21  | Chapter 15: Database Design |
+| 22  | Chapter 16: UI Design |
+| 23  | Chapter 17: Implementation |
+| 24  | Chapter 18: Testing |
+| 25  | Chapter 19: Results |
+| 26  | Chapter 20: Advantages |
+| 27  | Chapter 21: Limitations |
+| 28  | Chapter 22: Future Enhancements |
+| 29  | Chapter 23: Conclusion |
+| 30  | Chapter 24: References |
+
+*Chapter numbering: the report uses Chapters 1–24 for the body; the college template's items 7–30 correspond to Chapters 1–24 respectively.*
 
 ---
 
@@ -1558,6 +1606,13 @@ The following screenshots should be inserted into the final report document at t
 | Reports Page — Average Ratings | Bar chart showing average rating per category | `docs/screenshots/reports_ratings.png` |
 | Reports Page — Category Distribution | Donut/pie chart of feedback count by category | `docs/screenshots/reports_distribution.png` |
 | Reports Page — Submission Trends | Line graph of weekly/monthly submission volume over time | `docs/screenshots/reports_trends.png` |
+| Faculty Dashboard | Department-filtered feedback table with countdown timers and escalation badges | `docs/screenshots/faculty_dashboard.png` |
+| Faculty Feedback Detail with Comment Thread | Full feedback detail view with threaded comment section (read-only for students, editable by matching faculty) | `docs/screenshots/faculty_feedback_detail.png` |
+| Admin Faculty Management | Table of all faculty accounts with create-new-faculty form | `docs/screenshots/admin_faculty.png` |
+| Verification (Verify / Fail on a Resolved item) | Resolution verification screen showing Verified/Closed or fail actions | `docs/screenshots/verification.png` |
+| Student view of comment thread (read-only) | Student's read-only view of the discussion thread on their own feedback submission | `docs/screenshots/student_comment_view.png` |
+
+*Screenshots are captured from the running application and inserted here by the author.*
 
 ## 19.5 Achieved Outcomes
 
