@@ -101,7 +101,9 @@ def preprocess_markdown():
         full_path = m.group(2)
         base = os.path.basename(full_path)
         if base in TALL_IMAGES:
-            return f'![{alt}]({full_path}){{height=8.3in}}'
+            # Constrain height to fit A4 printable area (~8 in) while
+            # keeping width proportional but no wider than 5.5 in.
+            return f'![{alt}]({full_path}){{width=5.5in;height=7.8in}}'
         elif base in NARROW_IMAGES:
             return f'![{alt}]({full_path}){{width=6.3in}}'
         return m.group(0)
@@ -326,12 +328,14 @@ def post_process():
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from lxml import etree as _lxml_et
     import tempfile as _tempfile
+    import xml.etree.ElementTree as _ET
+    import zipfile as _zf
 
     doc = Document(RAW_DOCX)
     w_ns = W_NS
     r_ns = R_NS
 
-    # ---- (a) Title page centering ----
+    # ---- (a) Title page centering ---
     first_h1 = None
     for p in doc.paragraphs:
         if p.style.name.startswith("Heading 1"):
@@ -556,6 +560,45 @@ def post_process():
 
     # Save final docx.
     doc.save(OUTPUT_DOCX)
+
+    # ---- Resize oversized images to fit A4 printable area ----
+    # Modify OUTPUT_DOCX directly as a ZIP after python-docx has saved it.
+    # This avoids the problem of python-docx re-serializing from its internal model.
+    import xml.etree.ElementTree as _ET2
+    MAX_W_IN = 6.0
+    MAX_H_IN = 7.8
+    EMU_PER_INCH = 914400
+
+    resize_dir = _tempfile.mkdtemp(dir=BUILD_DIR, prefix="_resize_final_")
+    try:
+        with zipfile.ZipFile(OUTPUT_DOCX) as zf_in:
+            zf_in.extractall(resize_dir)
+        doc_xml_path = os.path.join(resize_dir, "word", "document.xml")
+        tree = _ET2.parse(doc_xml_path)
+        root = tree.getroot()
+        resized_count = 0
+        for elem in list(root.iter()):
+            tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+            # Match both 'a:ext' and 'wp:extent' (both control image size)
+            if tag in ("ext", "extent"):
+                cx = int(elem.get("cx", 0)) / EMU_PER_INCH
+                cy = int(elem.get("cy", 0)) / EMU_PER_INCH
+                scale = min(1.0, MAX_W_IN / max(cx, 0.01), MAX_H_IN / max(cy, 0.01))
+                if scale < 1.0:
+                    elem.set("cx", str(int(cx * scale * EMU_PER_INCH)))
+                    elem.set("cy", str(int(cy * scale * EMU_PER_INCH)))
+                    resized_count += 1
+        tree.write(doc_xml_path)
+        # Rebuild the docx zip from modified files.
+        with zipfile.ZipFile(OUTPUT_DOCX, "w") as zf_out:
+            for root_dir, dirs, files in os.walk(resize_dir):
+                for fname in sorted(files):
+                    full = os.path.join(root_dir, fname)
+                    arcname = os.path.relpath(full, resize_dir)
+                    zf_out.write(full, arcname)
+        print(f"[C] Resized {resized_count} image extents to fit A4")
+    finally:
+        shutil.rmtree(resize_dir, ignore_errors=True)
 
     # Set updateFields in settings.xml (must be after python-docx writes).
     _set_update_fields(OUTPUT_DOCX)
