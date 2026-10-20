@@ -8,7 +8,6 @@ Usage (from repo root):
 
 import os, shutil, subprocess, sys, re as _re, glob as _glob, zipfile
 from io import BytesIO
-import xml.etree.ElementTree as ET
 import tempfile as _tempfile
 
 # ---------------------------------------------------------------------------
@@ -110,45 +109,89 @@ def preprocess_markdown():
 
     content = _re.sub(r'!\[(.*?)\]\((docs/images/[^)]+)\)', _size_image, content)
 
-    # (d) Screenshot placeholders after the Chapter 19.4 table ends.
+    # (d) Screenshot placeholders after the Chapter 19.4 table ENDS.
+    #     Strategy: collect all lines of the screenshot table verbatim, then
+    #     insert frames immediately after the last data row.
     lines = content.split("\n")
     new_lines = []
     past_194_table = False
-    for i, line in enumerate(lines):
+
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        stripped = line.strip()
+
         if not past_194_table:
-            stripped = line.strip()
-            # Detect the last row of the screenshot table (contains docs/screenshots)
+            # Look for the start of Chapter 19.4 Screenshots Placeholder section
             if "## 19.4 Screenshots Placeholder" in line:
                 new_lines.append(line)
+                i += 1
                 continue
-            if stripped.startswith("|") and "docs/screenshots" not in stripped:
+
+            # If we're inside a table (lines starting with |), collect them all
+            if stripped.startswith("|"):
+                # Append this row and keep collecting until non-table line
                 new_lines.append(line)
+                i += 1
                 continue
-            elif stripped.startswith("|") and "docs/screenshots" in stripped:
-                past_194_table = True
-                # Insert placeholders after this table row.
-                for idx, (name, path) in enumerate(SCREENSHOT_ROWS, 1):
-                    caption = f"*Figure 19.{idx}: {name}*"
-                    if os.path.exists(os.path.join(REPO_ROOT, path)):
-                        new_lines.append("")
-                        new_lines.append(caption)
-                        new_lines.append(f'![Figure 19.{idx}: {name}]({path}){{width=6.0in}}')
-                    else:
-                        new_lines.append("")
-                        new_lines.append(caption)
-                        new_lines.append(
-                            '```{=openxml}\n'
-                            f'<w:p><w:r><w:t>Insert screenshot: {name} ({path})</w:t></w:r></w:p>\n'
-                            '```\n'
-                        )
-                continue
-            else:
-                new_lines.append(line)
-                continue
+
+            # Non-table, non-heading content before 19.4 → just append
+            new_lines.append(line)
+            i += 1
+            continue
+
         # past_194_table is True — append all remaining lines.
         new_lines.append(line)
+        i += 1
 
     content = "\n".join(new_lines)
+
+    # --- Now insert screenshot frames AFTER the 19.4 table ONLY ---
+    lines2 = content.split("\n")
+    new_lines2 = []
+    in_194_section = False
+    inside_194_table = False
+    for j, line in enumerate(lines2):
+        stripped = line.strip()
+
+        if "## 19.4 Screenshots Placeholder" in line:
+            # Start of the screenshot section — begin tracking table rows.
+            in_194_section = True
+            inside_194_table = False
+            new_lines2.append(line)
+            continue
+
+        if in_194_section and stripped.startswith("|"):
+            # Inside the 19.4 section's table — keep collecting rows.
+            inside_194_table = True
+            new_lines2.append(line)
+            continue
+
+        # Non-table line after being inside the 19.4 table → insert frames now.
+        if in_194_section and inside_194_table:
+            for idx, (name, path) in enumerate(SCREENSHOT_ROWS, 1):
+                caption = f"*Figure 19.{idx}: {name}*"
+                full_path = os.path.join(REPO_ROOT, path)
+                if os.path.exists(full_path):
+                    new_lines2.append("")
+                    new_lines2.append(caption)
+                    new_lines2.append(
+                        f'![Figure 19.{idx}: {name}]({path}){{width=6.0in}}'
+                    )
+                else:
+                    new_lines2.append("")
+                    new_lines2.append(caption)
+                    new_lines2.append(
+                        '```{=openxml}\n'
+                        f'<w:p><w:r><w:t>Insert screenshot: {name} ({path})</w:t></w:r></w:p>\n'
+                        '```\n'
+                    )
+            in_194_section = False
+            inside_194_table = False
+
+        new_lines2.append(line)
+
+    content = "\n".join(new_lines2)
 
     os.makedirs(BUILD_DIR, exist_ok=True)
     with open(PREPROC_MD, "w") as f:
@@ -157,84 +200,295 @@ def preprocess_markdown():
 
 
 # ---------------------------------------------------------------------------
-# Reference docx generator (Step B)
+# Reference docx generator — from PANDOC's bundled default, then modify styles
 # ---------------------------------------------------------------------------
 
 def generate_reference_docx():
-    """Create a minimal reference.docx with proper base styles."""
+    """Create reference.docx from pandoc's bundled default data file."""
+    import pypandoc
+    from lxml import etree as _lxml_et
+
+    pandoc_path = pypandoc.get_pandoc_path()
+    cmd = [pandoc_path, "-o", REF_DOCX, "--print-default-data-file=reference.docx"]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"[B] pandoc --print-default-data-file failed: {r.stderr}")
+        sys.exit(1)
+
+    # Now open the generated docx with python-docx and modify styles in place.
     from docx import Document
-    from docx.shared import Pt, Inches, Cm
+    from docx.shared import Pt, Cm, Inches as D_Inches
     from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-    doc = Document()
+    doc = Document(REF_DOCX)
 
-    # Page setup: A4, 1-inch margins
+    # Page setup: A4 (210×297 mm), 1-inch margins.
     section = doc.sections[0]
     section.page_width = Cm(21.0)
     section.page_height = Cm(29.7)
     for margin_name in ("top", "bottom", "left", "right"):
-        setattr(section, f"{margin_name}_margin", Inches(1))
+        setattr(section, f"{margin_name}_margin", D_Inches(1))
 
-    # Body text style
-    body_style = doc.styles["Normal"]
-    body_font = body_style.font
-    body_font.name = "Times New Roman"
-    body_font.size = Pt(12)
-    body_pf = body_style.paragraph_format
-    body_pf.line_spacing = 1.15
-    body_pf.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    body_pf.space_after = Pt(6)
+    # ---- Modify body styles via python-docx ----
+    def _set_body_style(style_name, size_pt, bold=False, italic=False,
+                       alignment=None, space_after_pt=6, line_spacing=1.15):
+        """Set font/size/bold/italic/alignment/space-after for a style."""
+        try:
+            sty = doc.styles[style_name]
+        except KeyError:
+            return  # Style doesn't exist — skip.
 
-    # Heading styles: all Times New Roman, black, specified sizes.
-    for level, (pt_val, bold, page_break_before) in [
-        (1, (16, True, True)),
-        (2, (14, True, False)),
-        (3, (12, True, False)),
-        (4, (12, True, False)),
-    ]:
-        h = doc.styles[f"Heading {level}"]
-        h.font.name = "Times New Roman"
-        h.font.size = Pt(pt_val)
-        h.font.bold = bold
+        fnt = sty.font
+        fnt.name = "Times New Roman"
+        fnt.size = Pt(size_pt)
+        if bold is not None:
+            fnt.bold = bold
+        if italic is not None:
+            fnt.italic = italic
+
+        pf = sty.paragraph_format
+        if alignment is not None:
+            pf.alignment = alignment
+        pf.line_spacing = line_spacing
+        pf.space_after = Pt(space_after_pt)
+
+    _set_body_style("Normal", 12, bold=False, italic=False,
+                    alignment=WD_ALIGN_PARAGRAPH.JUSTIFY, space_after_pt=6)
+    _set_body_style("Body Text", 12, bold=False, italic=False,
+                    alignment=WD_ALIGN_PARAGRAPH.JUSTIFY, space_after_pt=6)
+    _set_body_style("First Paragraph", 12, bold=False, italic=False,
+                    alignment=WD_ALIGN_PARAGRAPH.JUSTIFY, space_after_pt=0)
+    _set_body_style("Compact", 10.5, bold=False, italic=False,
+                    alignment=WD_ALIGN_PARAGRAPH.LEFT, space_after_pt=2)
+
+    # ---- Heading styles ----
+    def _set_heading(level, size_pt, bold=True, page_break_before=False):
+        try:
+            sty = doc.styles[f"Heading {level}"]
+        except KeyError:
+            return
+        fnt = sty.font
+        fnt.name = "Times New Roman"
+        fnt.size = Pt(size_pt)
+        fnt.bold = bold
+        pf = sty.paragraph_format
         if page_break_before:
-            h.paragraph_format.page_break_before = True
+            pf.page_break_before = True
 
-    # Title style — for the title-page heading (not in TOC).
-    from docx.enum.style import WD_STYLE_TYPE
+    _set_heading(1, 16, bold=True, page_break_before=True)
+    _set_heading(2, 14, bold=True, page_break_before=False)
+    _set_heading(3, 12, bold=True, page_break_before=False)
+    _set_heading(4, 12, bold=True, page_break_before=False)
+
+    # Title style.
     try:
         title_style = doc.styles["Title"]
     except KeyError:
+        from docx.enum.style import WD_STYLE_TYPE
         title_style = doc.styles.add_style("Title", WD_STYLE_TYPE.PARAGRAPH)
-    title_font = title_style.font
-    title_font.name = "Times New Roman"
-    title_font.size = Pt(24)
-    title_font.bold = True
-    title_pf = title_style.paragraph_format
-    title_pf.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_pf.space_after = Pt(12)
+    tf = title_style.font
+    tf.name = "Times New Roman"
+    tf.size = Pt(24)
+    tf.bold = True
+    tp = title_style.paragraph_format
+    tp.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # Code block / Source Code style.
+    # Source Code / Verbatim Char.
     try:
         code_style = doc.styles["Source Code"]
     except KeyError:
+        from docx.enum.style import WD_STYLE_TYPE
         code_style = doc.styles.add_style("Source Code", WD_STYLE_TYPE.PARAGRAPH)
-    code_font = code_style.font
-    code_font.name = "Consolas"
-    code_font.size = Pt(9)
+    cf = code_style.font
+    cf.name = "Courier New"
+    cf.size = Pt(9)
 
-    # Caption style (italic, 10 pt, centered).
+    # Caption / Image Caption / Captioned Figure.
+    for cap_name in ("Caption", "Image Caption", "Captioned Figure"):
+        try:
+            sty = doc.styles[cap_name]
+        except KeyError:
+            continue
+        fnt = sty.font
+        fnt.name = "Times New Roman"
+        fnt.size = Pt(10)
+        fnt.italic = True
+        pf = sty.paragraph_format
+        pf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+
+    # ---- Remove theme attributes from styles.xml via lxml ----
+    # This MUST happen after python-docx has opened/saved the file, because
+    # python-docx may have added its own elements.  We edit the raw XML of
+    # word/styles.xml in-place using lxml (preserves prefixes).
+
+    import xml.etree.ElementTree as _ET2
+
+    tmp_dir = _tempfile.mkdtemp(dir=BUILD_DIR, prefix="_styles_tmp_")
     try:
-        cap_style = doc.styles["Caption"]
-    except KeyError:
-        cap_style = doc.styles.add_style("Caption", WD_STYLE_TYPE.PARAGRAPH)
-    cap_font = cap_style.font
-    cap_font.name = "Times New Roman"
-    cap_font.size = Pt(10)
-    cap_font.italic = True
-    cap_pf = cap_style.paragraph_format
-    cap_pf.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        with zipfile.ZipFile(REF_DOCX) as zf_in:
+            zf_in.extractall(tmp_dir)
+        styles_path = os.path.join(tmp_dir, "word", "styles.xml")
 
-    doc.save(REF_DOCX)
+        tree = _lxml_et.parse(styles_path)
+        root = tree.getroot()
+        ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+        # 1. Remove theme attributes from ALL w:rFonts elements in styles.xml.
+        for rfonts in root.iter(f"{ns_w}rFonts"):
+            for attr in ("asciiTheme", "hAnsiTheme", "eastAsiaTheme", "cstheme"):
+                key = f"{{{ns_w}}}{attr}"
+                if key in rfonts.attrib:
+                    del rfonts.attrib[key]
+
+        # 2. Remove themeColor / themeShade from ALL w:color elements; set val to 000000.
+        for color_el in root.iter(f"{ns_w}color"):
+            for attr in ("themeColor", "themeShade", "themeTint"):
+                key = f"{{{ns_w}}}{attr}"
+                if key in color_el.attrib:
+                    del color_el.attrib[key]
+            # Ensure explicit black colour.
+            color_el.set(f"{{{ns_w}}}val", "000000")
+
+        # 3. Set w:sz / w:szCs to exact pt values for body styles.
+        #    We need to find the rPr inside each style element and set sz.
+        for style_elem in root.iter(f"{ns_w}style"):
+            name_el = style_elem.find(f"{ns_w}name")
+            if name_el is None:
+                continue
+            sname = name_el.get("val", "")
+
+            # Find the pPr / rPr chain inside this style.
+            rp_default = style_elem.find(f"{ns_w}rPrDefault/{ns_w}rPr")
+            rp = style_elem.find(f"{ns_w}rPr") or rp_default
+
+            if sname in ("Normal", "Body Text"):
+                # Set sz=24 (12pt * 2) and szCs=24.
+                if rp is not None:
+                    for sz_el in rp.iter(f"{ns_w}sz"):
+                        sz_el.set(f"{{{ns_w}}}val", "24")
+                    for szcs_el in rp.iter(f"{ns_w}szCs"):
+                        szcs_el.set(f"{{{ns_w}}}val", "24")
+            elif sname == "Compact":
+                if rp is not None:
+                    for sz_el in rp.iter(f"{ns_w}sz"):
+                        sz_el.set(f"{{{ns_w}}}val", "21")  # 10.5pt * 2
+                    for szcs_el in rp.iter(f"{ns_w}szCs"):
+                        szcs_el.set(f"{{{ns_w}}}val", "21")
+
+            elif sname == "heading 1":
+                if rp is not None:
+                    for sz_el in rp.iter(f"{ns_w}sz"):
+                        sz_el.set(f"{{{ns_w}}}val", "32")   # 16pt * 2
+                    for szcs_el in rp.iter(f"{ns_w}szCs"):
+                        szcs_el.set(f"{{{ns_w}}}val", "32")
+            elif sname == "heading 2":
+                if rp is not None:
+                    for sz_el in rp.iter(f"{ns_w}sz"):
+                        sz_el.set(f"{{{ns_w}}}val", "28")   # 14pt * 2
+                    for szcs_el in rp.iter(f"{ns_w}szCs"):
+                        szcs_el.set(f"{{{ns_w}}}val", "28")
+            elif sname == "heading 3":
+                if rp is not None:
+                    for sz_el in rp.iter(f"{ns_w}sz"):
+                        sz_el.set(f"{{{ns_w}}}val", "24")   # 12pt * 2
+                    for szcs_el in rp.iter(f"{ns_w}szCs"):
+                        szcs_el.set(f"{{{ns_w}}}val", "24")
+            elif sname == "heading 4":
+                if rp is not None:
+                    for sz_el in rp.iter(f"{ns_w}sz"):
+                        sz_el.set(f"{{{ns_w}}}val", "24")   # 12pt * 2
+                    for szcs_el in rp.iter(f"{ns_w}szCs"):
+                        szcs_el.set(f"{{{ns_w}}}val", "24")
+
+            elif sname == "Title":
+                if rp is not None:
+                    for sz_el in rp.iter(f"{ns_w}sz"):
+                        sz_el.set(f"{{{ns_w}}}val", "48")   # 24pt * 2
+                    for szcs_el in rp.iter(f"{ns_w}szCs"):
+                        szcs_el.set(f"{{{ns_w}}}val", "48")
+
+            elif sname == "Source Code":
+                if rp is not None:
+                    for sz_el in rp.iter(f"{ns_w}sz"):
+                        sz_el.set(f"{{{ns_w}}}val", "18")   # 9pt * 2
+                    for szcs_el in rp.iter(f"{ns_w}szCs"):
+                        szcs_el.set(f"{{{ns_w}}}val", "18")
+
+            elif sname in ("Caption", "Image Caption", "Captioned Figure"):
+                if rp is not None:
+                    for sz_el in rp.iter(f"{ns_w}sz"):
+                        sz_el.set(f"{{{ns_w}}}val", "20")   # 10pt * 2
+                    for szcs_el in rp.iter(f"{ns_w}szCs"):
+                        szcs_el.set(f"{{{ns_w}}}val", "20")
+
+            elif sname == "Table":
+                if rp is not None:
+                    for sz_el in rp.iter(f"{ns_w}sz"):
+                        sz_el.set(f"{{{ns_w}}}val", "24")   # 12pt * 2
+                    for szcs_el in rp.iter(f"{ns_w}szCs"):
+                        szcs_el.set(f"{{{ns_w}}}val", "24")
+
+        # 4. Set w:color to black (000000) for all styles that set a colour.
+        for style_elem in root.iter(f"{ns_w}style"):
+            name_el = style_elem.find(f"{ns_w}name")
+            if name_el is None:
+                continue
+            sname = name_el.get("val", "")
+
+            rp_default = style_elem.find(f"{ns_w}rPrDefault/{ns_w}rPr")
+            rp = style_elem.find(f"{ns_w}rPr") or rp_default
+
+            if rp is not None:
+                for color_el in rp.iter(f"{ns_w}color"):
+                    for attr in ("themeColor", "themeShade", "themeTint"):
+                        key = f"{{{ns_w}}}{attr}"
+                        if key in color_el.attrib:
+                            del color_el.attrib[key]
+                    color_el.set(f"{{{ns_w}}}val", "000000")
+
+        # 5. Table style — add visible borders (w:tblBorders).
+        for style_elem in root.iter(f"{ns_w}style"):
+            name_el = style_elem.find(f"{ns_w}name")
+            if name_el is None:
+                continue
+            sname = name_el.get("val", "")
+            if sname == "Table":
+                tblPr = style_elem.find(f"{ns_w}tblPr")
+                if tblPr is None:
+                    tblPr = _lxml_et.SubElement(style_elem, f"{{{ns_w}}}tblPr")
+
+                # Remove existing tblBorders if any.
+                for old_borders in list(tblPr.iter(f"{ns_w}tblBorders")):
+                    tblPr.remove(old_borders)
+
+                borders = _lxml_et.SubElement(tblPr, f"{{{ns_w}}}tblBorders")
+                for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+                    _lxml_et.SubElement(
+                        borders, f"{{{ns_w}}}{edge}",
+                        {f"{{{ns_w}}}val": "single",
+                         f"{{{ns_w}}}sz": "4",
+                         f"{{{ns_w}}}space": "0",
+                         f"{{{ns_w}}}color": "808080"},
+                    )
+
+                # Also set table width to auto-fit window.
+                tblW = tblPr.find(f"{ns_w}tblW")
+                if tblW is None:
+                    tblW = _lxml_et.SubElement(tblPr, f"{{{ns_w}}}tblW")
+                tblW.set(f"{{{ns_w}}}type", "auto")
+
+        tree.write(styles_path, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+        # Rebuild the reference docx zip.
+        with zipfile.ZipFile(REF_DOCX, "w") as zf_out:
+            for root_dir, dirs, files in os.walk(tmp_dir):
+                for fname in sorted(files):
+                    full = os.path.join(root_dir, fname)
+                    arcname = os.path.relpath(full, tmp_dir)
+                    zf_out.write(full, arcname)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
     print(f"[B] Reference docx → {REF_DOCX}")
 
 
@@ -269,36 +523,38 @@ def run_pandoc():
 
 
 # ---------------------------------------------------------------------------
-# Step C — post-process with python-docx
+# Step C — post-process with python-docx / lxml only (no ElementTree on document.xml)
 # ---------------------------------------------------------------------------
 
 W_NS = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
-R_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 
 
 def _set_update_fields(docx_path):
-    """Set w:updateFields w:val=\"true\" in word/settings.xml."""
+    """Set w:updateFields w:val=\"true\" in word/settings.xml using lxml."""
     ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
     tmp_dir = None
     try:
+        from lxml import etree as _lxml_et
         tmp_dir = _tempfile.mkdtemp(dir=BUILD_DIR, prefix="_uf_tmp_")
         with zipfile.ZipFile(docx_path) as zf:
             zf.extractall(tmp_dir)
         settings_path = os.path.join(tmp_dir, "word", "settings.xml")
         if not os.path.exists(settings_path):
             os.makedirs(os.path.dirname(settings_path), exist_ok=True)
-            ET.ElementTree(ET.Element(f"{{{ns_w}}}settings")).write(
-                settings_path, xml_declaration=True, encoding="UTF-8",
-            )
-        tree = ET.parse(settings_path)
+            # Create minimal settings element.
+            root_el = _lxml_et.Element(f"{{{ns_w}}}settings")
+            tree = _lxml_et.ElementTree(root_el)
+            tree.write(settings_path, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+        tree = _lxml_et.parse(settings_path)
         root = tree.getroot()
         tag_local = root.tag.split("}")[-1] if "}" in root.tag else root.tag
         if tag_local != "settings":
-            new_root = ET.Element(f"{{{ns_w}}}settings")
+            new_root = _lxml_et.Element(f"{{{ns_w}}}settings")
             for child in list(root):
                 new_root.append(child)
             root = new_root
-            tree = ET.ElementTree(root)
+
         uf_found = False
         for child in root:
             gtag = child.tag.split("}")[-1] if "}" in child.tag else child.tag
@@ -306,10 +562,12 @@ def _set_update_fields(docx_path):
                 child.set(f"{{{ns_w}}}val", "true")
                 uf_found = True
         if not uf_found:
-            ET.SubElement(root, f"{{{ns_w}}}updateFields").set(
+            _lxml_et.SubElement(root, f"{{{ns_w}}}updateFields").set(
                 f"{{{ns_w}}}val", "true",
             )
-        tree.write(settings_path, xml_declaration=True, encoding="UTF-8")
+
+        tree.write(settings_path, xml_declaration=True, encoding="UTF-8", standalone=True)
+
         with zipfile.ZipFile(docx_path, "w") as zf_out:
             for root_dir, dirs, files in os.walk(tmp_dir):
                 for fname in sorted(files):
@@ -324,16 +582,12 @@ def _set_update_fields(docx_path):
 def post_process():
     """Final polish on the raw docx."""
     from docx import Document
-    from docx.shared import Pt, Inches
+    from docx.shared import Pt, Inches as D_Inches
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from lxml import etree as _lxml_et
-    import tempfile as _tempfile
-    import xml.etree.ElementTree as _ET
-    import zipfile as _zf
 
     doc = Document(RAW_DOCX)
     w_ns = W_NS
-    r_ns = R_NS
 
     # ---- (a) Title page centering ---
     first_h1 = None
@@ -373,22 +627,27 @@ def post_process():
         text = "".join(run.text for run in p.runs)
         if "[[TOC]]" in text:
             p.clear()
+            ns_xml = "{http://www.w3.org/XML/1998/namespace}space"
+
+            # Run 0: fldChar begin
             r1 = p.add_run()
-            fc_start = _lxml_et.SubElement(
-                r1._element, f"{w_ns}fldChar",
-                {f"{w_ns}fldCharType": "begin"},
-            )
+            _lxml_et.SubElement(r1._element, f"{w_ns}fldChar",
+                                {f"{w_ns}fldCharType": "begin"})
+            # Run 1: instrText
             r2 = p.add_run()
-            instr_t = _lxml_et.SubElement(
-                r2._element, f"{w_ns}instrText",
-                {"{http://www.w3.org/XML/1998/namespace}space": "preserve"},
-            )
-            instr_t.text = 'TOC \\o "1-2" \\h \\z \\u'
+            _lxml_et.SubElement(
+                r2._element, f"{w_ns}instrText", {ns_xml: "preserve"}).text = 'TOC \\o "1-2" \\h \\z \\u'
+            # Run 2: fldChar separate
             r3 = p.add_run()
-            fc_end = _lxml_et.SubElement(
-                r3._element, f"{w_ns}fldChar",
-                {f"{w_ns}fldCharType": "end"},
-            )
+            _lxml_et.SubElement(r3._element, f"{w_ns}fldChar",
+                                {f"{w_ns}fldCharType": "separate"})
+            # Run 3: placeholder text
+            r4 = p.add_run()
+            r4.text = "Right-click here and choose Update Field to build the table of contents."
+            # Run 4: fldChar end
+            r5 = p.add_run()
+            _lxml_et.SubElement(r5._element, f"{w_ns}fldChar",
+                                {f"{w_ns}fldCharType": "end"})
 
     # ---- (c) Footer with centered PAGE field on all sections ----
     for section in doc.sections:
@@ -398,37 +657,54 @@ def post_process():
             fp = footer.add_paragraph()
         else:
             fp = footer.paragraphs[0]
+        # Clear existing runs.
         for run in list(fp.runs):
             run.text = ""
 
+        # Build the PAGE field using lxml — each fldChar/instrText must be
+        # inside its own <w:r> run element.  Directly appending to fp._element
+        # without wrapping in runs gets stripped by python-docx on save.
+        ns_w = w_ns
+        ns_xml = "{http://www.w3.org/XML/1998/namespace}space"
+
+        # Run 0: fldChar begin
+        r_begin = fp.add_run()
+        _lxml_et.SubElement(r_begin._element, f"{ns_w}fldChar",
+                            {f"{ns_w}fldCharType": "begin"})
+
+        # Run 1: instrText with field code
+        r_instr_text = fp.add_run()
         _lxml_et.SubElement(
-            fp._element, f"{w_ns}fldChar",
-            {f"{w_ns}fldCharType": "begin"},
-        )
-        r_instr = fp.add_run()
-        instr_t = _lxml_et.SubElement(
-            r_instr._element, f"{w_ns}instrText",
-            {"{http://www.w3.org/XML/1998/namespace}space": "preserve"},
-        )
-        instr_t.text = " PAGE "
-        _lxml_et.SubElement(
-            fp._element, f"{w_ns}fldChar",
-            {f"{w_ns}fldCharType": "end"},
-        )
+            r_instr_text._element, f"{ns_w}instrText",
+            {ns_xml: "preserve"}).text = " PAGE "
+
+        # Run 2: fldChar separate (starts the result portion)
+        r_sep = fp.add_run()
+        _lxml_et.SubElement(r_sep._element, f"{ns_w}fldChar",
+                            {f"{ns_w}fldCharType": "separate"})
+
+        # Run 3: displayed value placeholder
+        r_val = fp.add_run()
+        r_val.text = "1"
+
+        # Run 4: fldChar end
+        r_end = fp.add_run()
+        _lxml_et.SubElement(r_end._element, f"{ns_w}fldChar",
+                            {f"{ns_w}fldCharType": "end"})
+
         fp.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
     # Ensure A4 page setup with 1-inch margins.
-    from docx.shared import Cm as D_Cm
     section = doc.sections[0]
     if not section.page_width:
-        section.page_width = D_Cm(21.0)
+        section.page_width = D_Inches(8.267)  # ~21cm
     if not section.page_height:
-        section.page_height = D_Cm(29.7)
+        section.page_height = D_Inches(11.693)  # ~29.7cm
     for margin_name in ("top", "bottom", "left", "right"):
         if getattr(section, f"{margin_name}_margin") is None:
-            setattr(section, f"{margin_name}_margin", Inches(1))
+            setattr(section, f"{margin_name}_margin", D_Inches(1))
 
-    # ---- (d) Table formatting: header-row repetition + autofit to window ----
+    # ---- (d) Table formatting ----
     page_width = doc.sections[0].page_width.inches
     left_m = doc.sections[0].left_margin.inches
     right_m = doc.sections[0].right_margin.inches
@@ -438,13 +714,18 @@ def post_process():
         tbl = table._element
         tblPr = tbl.find(f"{w_ns}tblPr")
         if tblPr is None:
-            tblPr = ET.SubElement(tbl, f"{w_ns}tblPr")
-        # Set autofit to window.
+            tblPr = _lxml_et.SubElement(tbl, f"{{{w_ns}}}tblPr")
+
+        # Set total width to 9026 twips (A4 minus margins).
         tw = tblPr.find(f"{w_ns}tblW")
         if tw is not None:
-            tw.set("{0}type".format(w_ns), "auto")
+            tw.set("{0}type".format(w_ns), "dxa")
+            tw.set("{0}w".format(w_ns), str(max_width_emu))
         else:
-            ET.SubElement(tblPr, f"{w_ns}tblW", {"{0}type".format(w_ns): "auto"})
+            _lxml_et.SubElement(
+                tblPr, f"{{{w_ns}}}tblW",
+                {"{0}type".format(w_ns): "dxa", "{0}w".format(w_ns): str(max_width_emu)},
+            )
 
         # Header row formatting.
         if table.rows and len(table.rows) > 0:
@@ -462,15 +743,17 @@ def post_process():
         placeholder_text = f"*Figure 19.{idx}: {name}*"
         full_path = os.path.join(REPO_ROOT, path)
         target_para = None
+        insert_screenshot_para = None
         for p in doc.paragraphs:
             text = "".join(run.text for run in p.runs)
             if placeholder_text == text.strip():
                 target_para = p
-                break
+            # Also track the "Insert screenshot:" paragraph that follows.
+            if "Insert screenshot: " + name in text:
+                insert_screenshot_para = p
 
         if target_para is None:
             # Caption was italicized by pandoc (asterisks stripped).
-            # Match on the figure number pattern instead.
             fig_pattern = _re.compile(rf"Figure 19\.{idx}:")
             found = False
             for p in doc.paragraphs:
@@ -479,15 +762,26 @@ def post_process():
                     target_para = p
                     found = True
                     break
-            if not found:
-                print(f"  [C] Warning: no paragraph found for screenshot frame {idx}")
+            # Also find the Insert screenshot paragraph.
+            if insert_screenshot_para is None and not found:
+                print(f"  [C] Warning: no paragraphs found for screenshot frame {idx}")
+                continue
+            elif not found:
                 continue
 
         parent_elem = target_para._element.getparent()
         idx_in_parent = list(parent_elem).index(target_para._element)
 
-        # Remove the placeholder paragraph.
+        # Remove the placeholder caption paragraph.
         parent_elem.remove(target_para._element)
+
+        # Also remove the "Insert screenshot:" openxml paragraph that pandoc
+        # generated from the ```{=openxml} block.  It's a sibling of the
+        # removed paragraph.
+        if insert_screenshot_para is not None:
+            ins_parent = insert_screenshot_para._element.getparent()
+            ins_idx = list(ins_parent).index(insert_screenshot_para._element)
+            ins_parent.remove(insert_screenshot_para._element)
 
         if os.path.exists(full_path):
             # Embed actual image at this position.
@@ -508,7 +802,7 @@ def post_process():
             tblPr2 = _lxml_et.SubElement(tbl_el, "{0}tblPr".format(w_ns))
             _lxml_et.SubElement(
                 tblPr2, "{0}tblW"
-                .format(w_ns), {"{0}type".format(w_ns): "auto"},
+                .format(w_ns), {"{0}type".format(w_ns): "dxa", "{0}w".format(w_ns): str(max_width_emu)},
             )
 
             # Borders.
@@ -534,22 +828,33 @@ def post_process():
                 .format(w_ns), {"{0}w".format(w_ns): str(max_width_emu)},
             )
 
-            # Single-cell row — 3 inches tall (3 * 1440 = 4320 EMUs).
+            # Single-cell row — 3 inches tall (3 * 1440 = 4320 twips).
             tr = _lxml_et.SubElement(tbl_el, "{0}tr".format(w_ns))
             trPr = _lxml_et.SubElement(tr, "{0}trPr".format(w_ns))
             _lxml_et.SubElement(
                 trPr, "{0}trHeight"
                 .format(w_ns),
                 {"{0}val".format(w_ns): str(int(3 * 1440)),
-                 "{0}hRule".format(w_ns): "atLeast"},
+                 "{0}hRule".format(w_ns): "exact"},
             )
 
             tc = _lxml_et.SubElement(tr, "{0}tc".format(w_ns))
             tcPr = _lxml_et.SubElement(tc, "{0}tcPr".format(w_ns))
+            # Cell margins 80 twips.
+            tcPr.set("{0}marLeft".format(w_ns), str(80))
+            tcPr.set("{0}marRight".format(w_ns), str(80))
+            tcPr.set("{0}marTop".format(w_ns), str(80))
+            tcPr.set("{0}marBottom".format(w_ns), str(80))
+
             _lxml_et.SubElement(
                 tcPr, "{0}vAlign"
                 .format(w_ns), {"{0}val".format(w_ns): "center"},
             )
+            # Cell shading.
+            shd2 = _lxml_et.SubElement(tcPr, "{0}shd".format(w_ns))
+            shd2.set("{0}fill".format(w_ns), "F2F2F2")
+            shd2.set("{0}val".format(w_ns), "clear")
+
             tcBody = _lxml_et.SubElement(tc, "{0}tcBody".format(w_ns))
             tc_p = _lxml_et.SubElement(tcBody, "{0}p".format(w_ns))
             tc_r = _lxml_et.SubElement(tc_p, "{0}r".format(w_ns))
@@ -561,10 +866,118 @@ def post_process():
     # Save final docx.
     doc.save(OUTPUT_DOCX)
 
+    # ---- Post-save lxml pass: fix blue headings & footer ----
+    # After python-docx saves, do a raw XML pass on styles.xml to strip
+    # any remaining theme attributes that cause blue headings.  Also verify
+    # the footer PAGE field structure is correct.
+    post_dir = _tempfile.mkdtemp(dir=BUILD_DIR, prefix="_postfix_")
+    try:
+        with zipfile.ZipFile(OUTPUT_DOCX) as zf_in:
+            zf_in.extractall(post_dir)
+        ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+        # --- Fix styles.xml: strip ALL theme attrs from rFonts & color ---
+        styles_path = os.path.join(post_dir, "word", "styles.xml")
+        if os.path.exists(styles_path):
+            tree_s = _lxml_et.parse(styles_path)
+            root_s = tree_s.getroot()
+
+            # Remove theme attributes from ALL rFonts (including docDefaults).
+            for rfonts in root_s.iter(f"{{{ns_w}}}rFonts"):
+                for attr in ("asciiTheme", "hAnsiTheme", "eastAsiaTheme", "cstheme"):
+                    key = f"{{{ns_w}}}{attr}"
+                    if key in rfonts.attrib:
+                        del rfonts.attrib[key]
+
+            # Remove themeColor/shade/tint from ALL color elements; force black.
+            for color_el in root_s.iter(f"{{{ns_w}}}color"):
+                for attr in ("themeColor", "themeShade", "themeTint"):
+                    key = f"{{{ns_w}}}{attr}"
+                    if key in color_el.attrib:
+                        del color_el.attrib[key]
+                color_el.set(f"{{{ns_w}}}val", "000000")
+
+            # Also strip theme attrs from docDefaults rPr (global defaults).
+            for def_rpr in root_s.iter(f"{{{ns_w}}}rPrDefault/{ns_w}rPr"):
+                for rfonts in def_rpr.iter(f"{{{ns_w}}}rFonts"):
+                    for attr in ("asciiTheme", "hAnsiTheme", "eastAsiaTheme", "cstheme"):
+                        key = f"{{{ns_w}}}{attr}"
+                        if key in rfonts.attrib:
+                            del rfonts.attrib[key]
+                for color_el in def_rpr.iter(f"{{{ns_w}}}color"):
+                    for attr in ("themeColor", "themeShade", "themeTint"):
+                        key = f"{{{ns_w}}}{attr}"
+                        if key in color_el.attrib:
+                            del color_el.attrib[key]
+                    color_el.set(f"{{{ns_w}}}val", "000000")
+
+            tree_s.write(styles_path, xml_declaration=True,
+                         encoding="UTF-8", standalone=True)
+
+        # --- Fix footer: rebuild PAGE field if fldChar was stripped ---
+        for fname in sorted(os.listdir(os.path.join(post_dir, "word"))):
+            if not fname.startswith("footer") or "_rels" in fname:
+                continue
+            fpath = os.path.join(post_dir, "word", fname)
+            tree_f = _lxml_et.parse(fpath)
+            root_f = tree_f.getroot()
+            ns_w_footer = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+            for p_elem in list(root_f.iter(f"{{{ns_w_footer}}}p")):
+                # Check if this paragraph already has a proper PAGE field.
+                fc_elements = list(p_elem.iter(f"{{{ns_w_footer}}}fldChar"))
+                instr_elements = list(p_elem.iter(f"{{{ns_w_footer}}}instrText"))
+
+                if len(fc_elements) >= 3 and len(instr_elements) >= 1:
+                    # Already has correct PAGE field structure — skip.
+                    continue
+
+                # No proper field → rebuild from scratch.
+                p_elem.clear()
+                ns_xml = "{http://www.w3.org/XML/1998/namespace}space"
+
+                # Run: fldChar begin
+                r0 = _lxml_et.SubElement(p_elem, f"{{{ns_w_footer}}}r")
+                _lxml_et.SubElement(r0, f"{{{ns_w_footer}}}fldChar",
+                                    {f"{{{ns_w_footer}}}fldCharType": "begin"})
+
+                # Run: instrText
+                r1 = _lxml_et.SubElement(p_elem, f"{{{ns_w_footer}}}r")
+                it = _lxml_et.SubElement(r1, f"{{{ns_w_footer}}}instrText",
+                                         {ns_xml: "preserve"})
+                it.text = " PAGE "
+
+                # Run: fldChar separate
+                r2 = _lxml_et.SubElement(p_elem, f"{{{ns_w_footer}}}r")
+                _lxml_et.SubElement(r2, f"{{{ns_w_footer}}}fldChar",
+                                    {f"{{{ns_w_footer}}}fldCharType": "separate"})
+
+                # Run: value placeholder
+                r3 = _lxml_et.SubElement(p_elem, f"{{{ns_w_footer}}}r")
+                t_el = _lxml_et.SubElement(r3, f"{{{ns_w_footer}}}t")
+                t_el.text = "1"
+
+                # Run: fldChar end
+                r4 = _lxml_et.SubElement(p_elem, f"{{{ns_w_footer}}}r")
+                _lxml_et.SubElement(r4, f"{{{ns_w_footer}}}fldChar",
+                                    {f"{{{ns_w_footer}}}fldCharType": "end"})
+
+            tree_f.write(fpath, xml_declaration=True,
+                         encoding="UTF-8", standalone=True)
+
+        # Rebuild the docx zip from modified files.
+        with zipfile.ZipFile(OUTPUT_DOCX, "w") as zf_out:
+            for root_dir, dirs, files in os.walk(post_dir):
+                for fname2 in sorted(files):
+                    full = os.path.join(root_dir, fname2)
+                    arcname = os.path.relpath(full, post_dir)
+                    zf_out.write(full, arcname)
+        print("[C] Post-save lxml pass: fixed headings & footer")
+    finally:
+        shutil.rmtree(post_dir, ignore_errors=True)
+
     # ---- Resize oversized images to fit A4 printable area ----
-    # Modify OUTPUT_DOCX directly as a ZIP after python-docx has saved it.
-    # This avoids the problem of python-docx re-serializing from its internal model.
-    import xml.etree.ElementTree as _ET2
+    # Use lxml to modify OUTPUT_DOCX directly (no ElementTree ns0: prefix bug).
     MAX_W_IN = 6.0
     MAX_H_IN = 7.8
     EMU_PER_INCH = 914400
@@ -574,13 +987,15 @@ def post_process():
         with zipfile.ZipFile(OUTPUT_DOCX) as zf_in:
             zf_in.extractall(resize_dir)
         doc_xml_path = os.path.join(resize_dir, "word", "document.xml")
-        tree = _ET2.parse(doc_xml_path)
+
+        tree = _lxml_et.parse(doc_xml_path)
         root = tree.getroot()
         resized_count = 0
+
         for elem in list(root.iter()):
-            tag = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-            # Match both 'a:ext' and 'wp:extent' (both control image size)
-            if tag in ("ext", "extent"):
+            tag_local = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
+            # Match wp:extent and a:ext (both control image size).
+            if tag_local == "ext":
                 cx = int(elem.get("cx", 0)) / EMU_PER_INCH
                 cy = int(elem.get("cy", 0)) / EMU_PER_INCH
                 scale = min(1.0, MAX_W_IN / max(cx, 0.01), MAX_H_IN / max(cy, 0.01))
@@ -588,14 +1003,17 @@ def post_process():
                     elem.set("cx", str(int(cx * scale * EMU_PER_INCH)))
                     elem.set("cy", str(int(cy * scale * EMU_PER_INCH)))
                     resized_count += 1
-        tree.write(doc_xml_path)
-        # Rebuild the docx zip from modified files.
+
+        tree.write(doc_xml_path, xml_declaration=True, encoding="UTF-8", standalone=True)
+
+        # Rebuild the docx zip from modified files — lxml preserves prefixes.
         with zipfile.ZipFile(OUTPUT_DOCX, "w") as zf_out:
             for root_dir, dirs, files in os.walk(resize_dir):
                 for fname in sorted(files):
                     full = os.path.join(root_dir, fname)
                     arcname = os.path.relpath(full, resize_dir)
                     zf_out.write(full, arcname)
+
         print(f"[C] Resized {resized_count} image extents to fit A4")
     finally:
         shutil.rmtree(resize_dir, ignore_errors=True)
@@ -636,7 +1054,6 @@ def verify():
     with open(INPUT_MD) as f:
         md_lines = f.readlines()
     # All top-level headings (lines starting with exactly one '# ' at column 0).
-    # Exclude any inside code blocks.
     in_code_block = False
     md_h1_total = 0
     for l in md_lines:
@@ -647,7 +1064,7 @@ def verify():
             continue
         if _re.match(r'^# ', l):
             md_h1_total += 1
-    # Subtract title page heading and Table of Contents heading.
+    # Exclude title page heading and Table of Contents heading.
     expected_h1_from_md = md_h1_total - 2   # exclude title + TOC headings
     print(f"[INFO] Heading 1 count: {h1_count} (expected ~{expected_h1_from_md})")
 
@@ -656,14 +1073,23 @@ def verify():
     has_toc = 'TOC \\o' in body_xml or '\\o "1-2"' in body_xml
     print(f"[{'PASS' if has_toc else 'FAIL'}] TOC field {'found' if has_toc else 'NOT found'}")
 
-    # 5. Check footer PAGE field.
+    # 5. Check footer PAGE field — must contain fldChar AND no literal "PAGE" inside w:t.
     footer_has_page = False
+    footer_no_literal_page = True
     for section in doc.sections:
         footer_xml = str(section.footer._element.xml)
-        if "PAGE" in footer_xml and "fldChar" in footer_xml:
+        if "fldChar" in footer_xml and " PAGE " in footer_xml:
+            # Check no literal "PAGE" inside w:t elements.
+            import re as _re2
+            t_elements = _re2.findall(r'<w:t[^>]*>.*?</w:t>', footer_xml)
+            for te in t_elements:
+                text_content = _re2.sub(r'<[^>]+>', '', te).strip()
+                if text_content == "PAGE":
+                    footer_no_literal_page = False
             footer_has_page = True
-            break
+
     print(f"[{'PASS' if footer_has_page else 'FAIL'}] Footer PAGE field {'found' if footer_has_page else 'NOT found'}")
+    print(f"[{'PASS' if footer_no_literal_page else 'FAIL'}] No literal 'PAGE' in footer w:t")
 
     # 6. Check updateFields setting in settings.xml inside the docx zip.
     with zipfile.ZipFile(OUTPUT_DOCX) as zf:
@@ -673,17 +1099,43 @@ def verify():
                 has_update = "updateFields" in content and 'val="true"' in content
                 print(f"[{'PASS' if has_update else 'FAIL'}] updateFields {'set' if has_update else 'NOT set'}")
 
-    # 7. git status — only scripts/build_report_docx.py should be new; build/ not tracked.
+    # 7. Count tables — must be >30, no ns0: prefix.
+    with zipfile.ZipFile(OUTPUT_DOCX) as zf:
+        doc_xml = zf.read("word/document.xml").decode()
+        table_count = doc_xml.count("<w:tbl>")
+        ns_prefix_count = doc_xml.count("ns0:")
+        print(f"[{'PASS' if table_count > 30 else 'FAIL'}] Tables: {table_count} (need >30)")
+        print(f"[{'PASS' if ns_prefix_count == 0 else 'FAIL'}] No ns0: prefix in document.xml ({ns_prefix_count})")
+
+    # 8. Check 19.4 screenshot table has 16 rows (header + 15).
+    from docx import Document as D2
+    doc_check = D2(OUTPUT_DOCX)
+    # Find the first table that looks like a screenshot table.
+    screenshot_table_rows = 0
+    for table in doc_check.tables:
+        if len(table.rows) > 1:
+            first_row_text = " ".join(cell.text.strip() for cell in table.rows[0].cells)
+            # The markdown uses "Screen | Description | Screenshot Location"
+            # or similar; look for any of the screenshot-related keywords.
+            if "Screenshot" in first_row_text or ("Name" in first_row_text and "Path" in first_row_text):
+                screenshot_table_rows = len(table.rows)
+                break
+    print(f"[{'PASS' if screenshot_table_rows == 16 else 'FAIL'}] Screenshot table rows: {screenshot_table_rows} (expected 16)")
+
+    # 9. git status — only scripts/build_report_docx.py should be changed.
     result = subprocess.run(
         ["git", "status", "--short"], capture_output=True, text=True, cwd=REPO_ROOT,
     )
-    new_files = [l for l in result.stdout.strip().split("\n") if l.startswith("??")]
-    build_new = any(f.startswith("build/") for f in new_files)
-    print(f"[{'PASS' if not build_new else 'WARN'}] git status — {'no build/ files staged (OK)' if not build_new else 'build/ has untracked files (expected, git-ignored)'}")
-    for f in new_files:
-        print(f"       + {f}")
+    staged_files = [l for l in result.stdout.strip().split("\n") if l and not l.startswith("??")]
+    only_script_changed = all(
+        "scripts/build_report_docx.py" in f or "build/" in f for f in staged_files
+    ) if staged_files else True
+    print(f"[{'PASS' if only_script_changed else 'FAIL'}] git status — only build script changed")
+    for f in result.stdout.strip().split("\n"):
+        if f:
+            print(f"       {f}")
 
-    # 8. LibreOffice check (optional).
+    # 10. LibreOffice PDF conversion + page count check (acceptance criterion).
     has_lo = shutil.which("soffice") is not None
     if has_lo:
         try:
@@ -700,12 +1152,44 @@ def verify():
                     try:
                         from pypdf import PdfReader
                         pages = len(PdfReader(pdf_path).pages)
-                        print(f"[INFO] PDF: {pdf_path} ({pages} pages)")
-                        # Render a few sample pages to PNG for visual check.
+                        print(f"[INFO] PDF page count: {pages}")
+                        if 70 <= pages <= 130:
+                            print(f"[PASS] Page count within acceptance range [70,130]")
+                        else:
+                            print(f"[FAIL] Page count {pages} OUTSIDE acceptance range [70,130]")
+
+                        # Near-empty page check (using pdftotext).
+                        import tempfile as _tmpf2
+                        empty_count = 0
+                        empty_pages = []
+                        tmp_txt_dir = _tmpf2.mkdtemp(dir=BUILD_DIR, prefix="_empty_check_")
                         try:
-                            from pypdf import PdfReader as PR2
-                            import subprocess as _subp
-                            reader = PR2(pdf_path)
+                            for pg in range(1, pages + 1):
+                                r2 = subprocess.run(
+                                    ["pdftotext", "-f", str(pg), "-l", str(pg),
+                                     pdf_path, os.path.join(tmp_txt_dir, f"pg_{pg}.txt")],
+                                    capture_output=True, text=True, timeout=30,
+                                )
+                                if r2.returncode == 0:
+                                    txt_path = os.path.join(tmp_txt_dir, f"pg_{pg}.txt")
+                                    with open(txt_path) as tf:
+                                        words = len(tf.read().split())
+                                    if words < 25:
+                                        empty_count += 1
+                                        empty_pages.append(pg)
+                            print(f"[INFO] Near-empty pages (<25 words): {empty_count}")
+                            print(f"       Page numbers: {empty_pages[:10]}{'...' if len(empty_pages) > 10 else ''}")
+                            if empty_count <= 35:
+                                print(f"[PASS] Near-empty page count within limit (≤35)")
+                            else:
+                                print(f"[FAIL] Near-empty pages {empty_count} exceeds limit 35")
+                        finally:
+                            shutil.rmtree(tmp_txt_dir, ignore_errors=True)
+
+                        # Render sample pages to PNG for visual check.
+                        try:
+                            import subprocess as _subp2
+                            reader = PdfReader(pdf_path)
                             sample_pages = [0]  # page 1 (title)
                             if len(reader.pages) > 5:
                                 sample_pages.append(6)  # Use Case diagram (~page 7)
@@ -717,17 +1201,16 @@ def verify():
                                 sample_pages.append(30)  # First screenshot frame
                             for pg in sample_pages:
                                 png_path = os.path.join(BUILD_DIR, f"check_page_{pg+1}.png")
-                                _subp.run([
-                                    "pdftoppm", "-r", "80", "-png",
+                                _subp2.run([
+                                    "pdftoppm", "-r", "60", "-png",
                                     pdf_path, png_path.replace(".png", ""),
                                 ], capture_output=True)
                                 if os.path.exists(png_path):
                                     sz = os.path.getsize(png_path)
-                                    print(f"       Rendered page {pg+1} → {sz} bytes (OK)")
-                                else:
-                                    print(f"       [WARN] pdftoppm did not produce page {pg+1}")
+                                    print(f"       Rendered page {pg+1} → {sz} bytes")
                         except Exception as e2:
                             print(f"       [WARN] Page rendering skipped: {e2}")
+
                     except ImportError:
                         print("[WARN] pypdf not installed — skipped page count")
                 else:
@@ -747,11 +1230,21 @@ def verify():
 # ---------------------------------------------------------------------------
 
 def cleanup():
-    """Remove temp files, keep OUTPUT_DOCX."""
+    """Remove temp files in build/, keep Project_Report.docx and .venv."""
     for path in [PREPROC_MD, REF_DOCX, RAW_DOCX]:
         if os.path.exists(path):
             os.remove(path)
             print(f"[CLEANUP] Removed {path}")
+
+    # Remove any other temp files/dirs in build/ except Project_Report.docx and .venv.
+    for item in sorted(os.listdir(BUILD_DIR)):
+        full = os.path.join(BUILD_DIR, item)
+        if item == "Project_Report.docx" or item == ".venv":
+            continue
+        # Remove temp directories (prefix _).
+        if os.path.isdir(full) and item.startswith("_"):
+            shutil.rmtree(full, ignore_errors=True)
+            print(f"[CLEANUP] Removed dir {full}")
 
 
 # ---------------------------------------------------------------------------
@@ -768,11 +1261,11 @@ def main():
     print("=" * 60)
 
     preprocess_markdown()     # Step A
-    generate_reference_docx() # Part of B — reference docx with styles
+    generate_reference_docx() # Part of B — reference docx from pandoc default
     run_pandoc()              # Step B — pandoc conversion
-    post_process()            # Step C — python-docx polish
+    post_process()            # Step C — python-docx/lxml polish
     verify()                  # Step D — verification checks
-    cleanup()                 # Remove temp files
+    cleanup()
 
     print("\n" + "=" * 60)
     size = os.path.getsize(OUTPUT_DOCX)
