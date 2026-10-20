@@ -331,151 +331,260 @@ def generate_reference_docx():
 
         tree = _lxml_et.parse(styles_path)
         root = tree.getroot()
-        ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 
-        # 1. Remove theme attributes from ALL w:rFonts elements in styles.xml.
-        for rfonts in root.iter(f"{ns_w}rFonts"):
-            for attr in ("asciiTheme", "hAnsiTheme", "eastAsiaTheme", "cstheme"):
-                key = f"{{{ns_w}}}{attr}"
+        # --- Namespace helpers (Clark notation with curly braces) ---
+        NS  = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+        VAL = NS + "val"   # attribute key for w:val
+
+        def _tag(name):
+            """Return Clark-notation tag string."""
+            return NS + name
+
+        def _get_val(el, default=None):
+            """Get the w:val attribute from an element."""
+            return el.get(VAL, default)
+
+        # ---- Step 1 — strip theme attrs from ALL rFonts ----
+        for rfonts in root.iter(_tag("rFonts")):
+            for attr in ("asciiTheme", "hAnsiTheme",
+                         "eastAsiaTheme", "cstheme"):
+                key = NS + attr
                 if key in rfonts.attrib:
                     del rfonts.attrib[key]
 
-        # 2. Remove themeColor / themeShade from ALL w:color elements; set val to 000000.
-        for color_el in root.iter(f"{ns_w}color"):
+        # ---- Step 2 — strip theme attrs from ALL w:color; force black ----
+        for color_el in root.iter(_tag("color")):
             for attr in ("themeColor", "themeShade", "themeTint"):
-                key = f"{{{ns_w}}}{attr}"
+                key = NS + attr
                 if key in color_el.attrib:
                     del color_el.attrib[key]
-            # Ensure explicit black colour.
-            color_el.set(f"{{{ns_w}}}val", "000000")
+            color_el.set(VAL, "000000")
 
-        # 3. Set w:sz / w:szCs to exact pt values for body styles.
-        #    We need to find the rPr inside each style element and set sz.
-        for style_elem in root.iter(f"{ns_w}style"):
-            name_el = style_elem.find(f"{ns_w}name")
-            if name_el is None:
-                continue
-            sname = name_el.get("val", "")
+        # ---- Step 3 — comprehensive heading style fix ----
+        H1_SPEC = {"sz": "32", "bold": True, "page_break_before": True,
+                   "space_before": "0", "space_after": "240"}
+        H2_SPEC = {"sz": "28", "bold": True, "space_before": "240",
+                   "space_after": "120"}
+        H3_SPEC = {"sz": "24", "bold": True, "space_before": "200",
+                   "space_after": "80"}
+        H4_SPEC = {"sz": "24", "bold": True, "italic": True}
+        TITLE_SPEC = {"sz": "48", "bold": True}
 
-            # Find the pPr / rPr chain inside this style.
-            rp_default = style_elem.find(f"{ns_w}rPrDefault/{ns_w}rPr")
-            rp = style_elem.find(f"{ns_w}rPr") or rp_default
+        spec_map = {
+            "heading 1": H1_SPEC,
+            "heading 2": H2_SPEC,
+            "heading 3": H3_SPEC,
+            "heading 4": H4_SPEC,
+            "title": TITLE_SPEC,
+        }
 
-            if sname in ("Normal", "Body Text"):
-                # Set sz=24 (12pt * 2) and szCs=24.
-                if rp is not None:
-                    for sz_el in rp.iter(f"{ns_w}sz"):
-                        sz_el.set(f"{{{ns_w}}}val", "24")
-                    for szcs_el in rp.iter(f"{ns_w}szCs"):
-                        szcs_el.set(f"{{{ns_w}}}val", "24")
-            elif sname == "Compact":
-                if rp is not None:
-                    for sz_el in rp.iter(f"{ns_w}sz"):
-                        sz_el.set(f"{{{ns_w}}}val", "21")  # 10.5pt * 2
-                    for szcs_el in rp.iter(f"{ns_w}szCs"):
-                        szcs_el.set(f"{{{ns_w}}}val", "21")
+        # Helper: find direct child by local name (no namespace prefix bug).
+        def _child(parent, local_name):
+            for c in parent:
+                cl = c.tag.split("}")[-1] if "}" in c.tag else c.tag
+                if cl == local_name:
+                    return c
+            return None
 
-            elif sname == "heading 1":
-                if rp is not None:
-                    for sz_el in rp.iter(f"{ns_w}sz"):
-                        sz_el.set(f"{{{ns_w}}}val", "32")   # 16pt * 2
-                    for szcs_el in rp.iter(f"{ns_w}szCs"):
-                        szcs_el.set(f"{{{ns_w}}}val", "32")
-            elif sname == "heading 2":
-                if rp is not None:
-                    for sz_el in rp.iter(f"{ns_w}sz"):
-                        sz_el.set(f"{{{ns_w}}}val", "28")   # 14pt * 2
-                    for szcs_el in rp.iter(f"{ns_w}szCs"):
-                        szcs_el.set(f"{{{ns_w}}}val", "28")
-            elif sname == "heading 3":
-                if rp is not None:
-                    for sz_el in rp.iter(f"{ns_w}sz"):
-                        sz_el.set(f"{{{ns_w}}}val", "24")   # 12pt * 2
-                    for szcs_el in rp.iter(f"{ns_w}szCs"):
-                        szcs_el.set(f"{{{ns_w}}}val", "24")
-            elif sname == "heading 4":
-                if rp is not None:
-                    for sz_el in rp.iter(f"{ns_w}sz"):
-                        sz_el.set(f"{{{ns_w}}}val", "24")   # 12pt * 2
-                    for szcs_el in rp.iter(f"{ns_w}szCs"):
-                        szcs_el.set(f"{{{ns_w}}}val", "24")
-
-            elif sname == "Title":
-                if rp is not None:
-                    for sz_el in rp.iter(f"{ns_w}sz"):
-                        sz_el.set(f"{{{ns_w}}}val", "48")   # 24pt * 2
-                    for szcs_el in rp.iter(f"{ns_w}szCs"):
-                        szcs_el.set(f"{{{ns_w}}}val", "48")
-
-            elif sname == "Source Code":
-                if rp is not None:
-                    for sz_el in rp.iter(f"{ns_w}sz"):
-                        sz_el.set(f"{{{ns_w}}}val", "18")   # 9pt * 2
-                    for szcs_el in rp.iter(f"{ns_w}szCs"):
-                        szcs_el.set(f"{{{ns_w}}}val", "18")
-
-            elif sname in ("Caption", "Image Caption", "Captioned Figure"):
-                if rp is not None:
-                    for sz_el in rp.iter(f"{ns_w}sz"):
-                        sz_el.set(f"{{{ns_w}}}val", "20")   # 10pt * 2
-                    for szcs_el in rp.iter(f"{ns_w}szCs"):
-                        szcs_el.set(f"{{{ns_w}}}val", "20")
-
-            elif sname == "Table":
-                if rp is not None:
-                    for sz_el in rp.iter(f"{ns_w}sz"):
-                        sz_el.set(f"{{{ns_w}}}val", "24")   # 12pt * 2
-                    for szcs_el in rp.iter(f"{ns_w}szCs"):
-                        szcs_el.set(f"{{{ns_w}}}val", "24")
-
-        # 4. Set w:color to black (000000) for all styles that set a colour.
-        for style_elem in root.iter(f"{ns_w}style"):
-            name_el = style_elem.find(f"{ns_w}name")
-            if name_el is None:
-                continue
-            sname = name_el.get("val", "")
-
-            rp_default = style_elem.find(f"{ns_w}rPrDefault/{ns_w}rPr")
-            rp = style_elem.find(f"{ns_w}rPr") or rp_default
-
+        # Helper: find rPr — check style-level first, then docDefaults.
+        def _find_rpr(style_elem):
+            rp = _child(style_elem, "rPr")
             if rp is not None:
-                for color_el in rp.iter(f"{ns_w}color"):
+                return rp
+            rpd = _child(style_elem, "rPrDefault")
+            if rpd is not None:
+                return _child(rpd, "rPr")
+            return None
+
+        # Helper: insert element before a reference sibling.
+        def _insert_before(parent, new_el, ref_el):
+            siblings = list(parent)
+            idx = siblings.index(ref_el) if ref_el in siblings else len(siblings)
+            parent.insert(idx, new_el)
+
+        for style_elem in root.iter(_tag("style")):
+            name_el = _child(style_elem, "name")
+            if name_el is None:
+                continue
+            sname = _get_val(name_el, "")
+            spec  = spec_map.get(sname.lower())
+
+            rp = _find_rpr(style_elem)
+
+            # --- Body styles: size only (theme attrs already stripped) ---
+            if sname in ("Normal", "Body Text") and rp is not None:
+                for sz_el in rp.iter(_tag("sz")):
+                    sz_el.set(VAL, "24")
+                for szcs_el in rp.iter(_tag("szCs")):
+                    szcs_el.set(VAL, "24")
+            elif sname == "Compact" and rp is not None:
+                for sz_el in rp.iter(_tag("sz")):
+                    sz_el.set(VAL, "21")
+                for szcs_el in rp.iter(_tag("szCs")):
+                    szcs_el.set(VAL, "21")
+            elif sname == "Source Code" and rp is not None:
+                for sz_el in rp.iter(_tag("sz")):
+                    sz_el.set(VAL, "18")
+                for szcs_el in rp.iter(_tag("szCs")):
+                    szcs_el.set(VAL, "18")
+            elif sname in ("Caption", "Image Caption",
+                           "Captioned Figure") and rp is not None:
+                for sz_el in rp.iter(_tag("sz")):
+                    sz_el.set(VAL, "20")
+                for szcs_el in rp.iter(_tag("szCs")):
+                    szcs_el.set(VAL, "20")
+            elif sname == "Table" and rp is not None:
+                for sz_el in rp.iter(_tag("sz")):
+                    sz_el.set(VAL, "24")
+                for szcs_el in rp.iter(_tag("szCs")):
+                    szcs_el.set(VAL, "24")
+
+            # --- Heading / Title styles: full formatting fix ---
+            elif spec is not None and rp is not None:
+                # (a) Explicit w:rFonts with Times New Roman.
+                rfonts = _child(rp, "rFonts")
+                if rfonts is None:
+                    sz_el = _child(rp, "sz")
+                    before = sz_el if sz_el is not None else (
+                        rp[0] if len(rp) > 0 else None)
+                    rfonts = _lxml_et.SubElement(
+                        rp, _tag("rFonts"),
+                        {NS + "ascii": "Times New Roman",
+                         NS + "hAnsi": "Times New Roman",
+                         NS + "cs": "Times New Roman",
+                         NS + "eastAsia": "Times New Roman"})
+                    if before:
+                        _insert_before(rp, rfonts, before)
+                else:
+                    for attr in ("ascii", "hAnsi", "cs", "eastAsia"):
+                        rfonts.set(NS + attr, "Times New Roman")
+                    for tattr in ("asciiTheme", "hAnsiTheme",
+                                  "eastAsiaTheme", "cstheme"):
+                        key = NS + tattr
+                        if key in rfonts.attrib:
+                            del rfonts.attrib[key]
+
+                # (b) Bold element.
+                if spec["bold"] and _child(rp, "b") is None:
+                    sz_el = _child(rp, "sz")
+                    before = sz_el if sz_el is not None else (
+                        rp[0] if len(rp) > 0 else None)
+                    b_el = _lxml_et.SubElement(rp, _tag("b"))
+                    if before is not None:
+                        _insert_before(rp, b_el, before)
+
+                # (c) Italic element (Heading 4).
+                if spec.get("italic") and _child(rp, "i") is None:
+                    sz_el = _child(rp, "sz")
+                    before = sz_el if sz_el is not None else (
+                        rp[0] if len(rp) > 0 else None)
+                    i_el = _lxml_et.SubElement(rp, _tag("i"))
+                    if before is not None:
+                        _insert_before(rp, i_el, before)
+
+                # (d) Size and szCs.
+                for sz_el in rp.iter(_tag("sz")):
+                    sz_el.set(VAL, spec["sz"])
+                for szcs_el in rp.iter(_tag("szCs")):
+                    szcs_el.set(VAL, spec["sz"])
+
+                # (e) Black colour.
+                has_color = False
+                for color_el in rp.iter(_tag("color")):
+                    has_color = True
                     for attr in ("themeColor", "themeShade", "themeTint"):
-                        key = f"{{{ns_w}}}{attr}"
+                        key = NS + attr
                         if key in color_el.attrib:
                             del color_el.attrib[key]
-                    color_el.set(f"{{{ns_w}}}val", "000000")
+                    color_el.set(VAL, "000000")
+                if not has_color:
+                    sz_el = _child(rp, "sz")
+                    before = sz_el if sz_el is not None else (
+                        rp[0] if len(rp) > 0 else None)
+                    color_el = _lxml_et.SubElement(
+                        rp, _tag("color"), {VAL: "000000"})
+                    if before is not None:
+                        _insert_before(rp, color_el, before)
+
+                # (f) pPr — pageBreakBefore and spacing.
+                pp = _child(style_elem, "pPr")
+                needs_pp = (spec.get("page_break_before")
+                            or spec.get("space_before") is not None
+                            or spec.get("space_after") is not None)
+                if needs_pp:
+                    if pp is None:
+                        # Insert pPr right after the name element.
+                        children = list(style_elem)
+                        for i, ch in enumerate(children):
+                            cl = (ch.tag.split("}")[-1]
+                                  if "}" in ch.tag else ch.tag)
+                            if cl == "name":
+                                pp = _lxml_et.SubElement(
+                                    style_elem, _tag("pPr"),
+                                    {NS + "docId": "0D51A601"})
+                                style_elem.remove(ch)
+                                style_elem.insert(i + 1, pp)
+                                break
+                        if pp is None:
+                            pp = _lxml_et.SubElement(
+                                style_elem, _tag("pPr"),
+                                {NS + "docId": "0D51A601"})
+
+                    # pageBreakBefore for Heading 1.
+                    if spec.get("page_break_before"):
+                        if _child(pp, "pageBreakBefore") is None:
+                            _lxml_et.SubElement(pp, _tag("pageBreakBefore"))
+
+                    # Spacing before / after (val in twentieths of a point).
+                    # In DOCX these are ATTRIBUTES on the <spacing> element,
+                    # not child elements.
+                    spc = _child(pp, "spacing")
+                    if spc is None:
+                        spc = _lxml_et.SubElement(pp, _tag("spacing"))
+                    for attr_name in ("before", "after"):
+                        spec_key = f"space_{attr_name}"
+                        val_str = spec.get(spec_key)
+                        if val_str is not None:
+                            spc.set(NS + attr_name, str(int(val_str)))
+
+                    # Remove semiHidden / unhideWhenUsed from Heading 2.
+                    if sname.lower() == "heading 2":
+                        for attr_name in ("semiHidden", "unhideWhenUsed"):
+                            el = _child(pp, attr_name)
+                            if el is not None:
+                                pp.remove(el)
+
+        # 4. (redundant — step 2 already forced all colours to black)
 
         # 5. Table style — add visible borders (w:tblBorders).
-        for style_elem in root.iter(f"{ns_w}style"):
-            name_el = style_elem.find(f"{ns_w}name")
+        for style_elem in root.iter(_tag("style")):
+            name_el = _child(style_elem, "name")
             if name_el is None:
                 continue
-            sname = name_el.get("val", "")
+            sname = _get_val(name_el, "")
             if sname == "Table":
-                tblPr = style_elem.find(f"{ns_w}tblPr")
+                tblPr = _child(style_elem, "tblPr")
                 if tblPr is None:
-                    tblPr = _lxml_et.SubElement(style_elem, f"{{{ns_w}}}tblPr")
+                    tblPr = _lxml_et.SubElement(style_elem, _tag("tblPr"))
 
-                # Remove existing tblBorders if any.
-                for old_borders in list(tblPr.iter(f"{ns_w}tblBorders")):
+                for old_borders in list(tblPr.iter(_tag("tblBorders"))):
                     tblPr.remove(old_borders)
 
-                borders = _lxml_et.SubElement(tblPr, f"{{{ns_w}}}tblBorders")
-                for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+                borders = _lxml_et.SubElement(tblPr, _tag("tblBorders"))
+                for edge in ("top", "left", "bottom",
+                             "right", "insideH", "insideV"):
                     _lxml_et.SubElement(
-                        borders, f"{{{ns_w}}}{edge}",
-                        {f"{{{ns_w}}}val": "single",
-                         f"{{{ns_w}}}sz": "4",
-                         f"{{{ns_w}}}space": "0",
-                         f"{{{ns_w}}}color": "808080"},
+                        borders, _tag(edge),
+                        {VAL: "single",
+                         NS + "sz": "4",
+                         NS + "space": "0",
+                         NS + "color": "808080"},
                     )
 
-                # Also set table width to auto-fit window.
-                tblW = tblPr.find(f"{ns_w}tblW")
+                tblW = _child(tblPr, "tblW")
                 if tblW is None:
-                    tblW = _lxml_et.SubElement(tblPr, f"{{{ns_w}}}tblW")
-                tblW.set(f"{{{ns_w}}}type", "auto")
+                    tblW = _lxml_et.SubElement(tblPr, _tag("tblW"))
+                tblW.set(NS + "type", "auto")
 
         tree.write(styles_path, xml_declaration=True, encoding="UTF-8", standalone=True)
 
@@ -649,7 +758,129 @@ def post_process():
             _lxml_et.SubElement(r5._element, f"{w_ns}fldChar",
                                 {f"{w_ns}fldCharType": "end"})
 
-    # ---- (c) Footer with centered PAGE field on all sections ----
+    VAL = w_ns + "val"  # attribute key for w:val
+
+    def _is_pagebreak_only_para(p_elem):
+        """Check if a paragraph element contains ONLY a page-break."""
+        for child in p_elem:
+            tag_local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            if tag_local == "r":
+                for subchild in child:
+                    sub_local = (subchild.tag.split("}")[-1]
+                                 if "}" in subchild.tag else subchild.tag)
+                    if (sub_local == "br"
+                            and subchild.get(f"{{{w_ns}}}type") == "page"):
+                        for txt in child.iter(f"{w_ns}t"):
+                            if txt.text and txt.text.strip():
+                                return False
+                        return True
+        return False
+
+    # ---- (c) Create "TOC Heading" style and apply to Table of Contents
+    #         heading so the TOC does not list itself.  Also remove explicit
+    #         page-break paragraphs that immediately precede a Heading 1
+    #         paragraph (from Certificate / Declaration / Acknowledgement).
+    try:
+        toc_sty = doc.styles["TOC Heading"]
+    except KeyError:
+        from docx.enum.style import WD_STYLE_TYPE as WST
+        # Copy Heading 1 formatting but without outline level.
+        h1_sty = doc.styles["Heading 1"]
+        toc_sty = doc.styles.add_style("TOC Heading", WST.PARAGRAPH)
+        tf = toc_sty.font
+        tf.name = "Times New Roman"
+        tf.size = Pt(16)   # 16 pt
+        tf.bold = True
+        tp = toc_sty.paragraph_format
+        tp.page_break_before = True
+        tp.space_after = Pt(240 / 20)  # 240 twentieths of a point ≈ 12 pt
+    
+    # Apply "TOC Heading" to the "Table of Contents" paragraph.
+    toc_para = None
+    for p in doc.paragraphs:
+        text = "".join(run.text for run in p.runs).strip()
+        if text == "Table of Contents":
+            toc_para = p
+            break
+    if toc_para is not None:
+        try:
+            toc_para.style = toc_sty
+        except KeyError:
+            pass  # style may have been removed — harmless.
+
+    # Ensure every Heading 1 paragraph (except the first one on title page)
+    # has an explicit page-break before it.  Pandoc does NOT apply
+    # pageBreakBefore from reference-doc styles, so we must add them
+    # explicitly in document.xml.
+    body = doc.element.body
+    para_list = list(body)
+    new_para_list = []
+    h1_seen = False  # track if we've seen the title-page H1 already
+
+    i = 0
+    while i < len(para_list):
+        p_elem = para_list[i]
+        is_pagebreak_only = False
+        for child in p_elem:
+            tag_local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            if tag_local == "r":
+                for subchild in child:
+                    sub_local = subchild.tag.split("}")[-1] if "}" in subchild.tag else subchild.tag
+                    if (sub_local == "br"
+                            and subchild.get(f"{{{w_ns}}}type") == "page"):
+                        has_text = False
+                        for txt in child.iter(f"{w_ns}t"):
+                            if txt.text and txt.text.strip():
+                                has_text = True
+                                break
+                        if not has_text:
+                            is_pagebreak_only = True
+
+        # Check if this paragraph IS a Heading 1.
+        pp = p_elem.find(f"{w_ns}pPr")
+        is_h1 = False
+        if pp is not None:
+            ps = pp.find(f"{w_ns}pStyle")
+            if ps is not None and ps.get(VAL) == "Heading1":
+                is_h1 = True
+
+        # If this is a Heading 1 paragraph AND we haven't seen the title
+        # page H1 yet (first H1 is the title on page 1), skip it — keep as-is.
+        if is_h1 and not h1_seen:
+            new_para_list.append(p_elem)
+            h1_seen = True
+            i += 1
+            continue
+
+        # If this is a Heading 1 paragraph AND we've already seen the title,
+        # ensure there's a page-break before it.
+        if is_h1 and h1_seen:
+            # Check if previous element in new_para_list is already a page break.
+            has_pb_before = (len(new_para_list) > 0
+                             and _is_pagebreak_only_para(new_para_list[-1]))
+            if not has_pb_before:
+                # Insert an explicit page-break paragraph before this H1.
+                pb_p = body.makeelement(w_ns + "p")
+                r_el = _lxml_et.SubElement(pb_p, w_ns + "r")
+                _lxml_et.SubElement(r_el, w_ns + "br",
+                                    {w_ns + "type": "page"})
+                new_para_list.append(pb_p)
+            new_para_list.append(p_elem)
+            i += 1
+            continue
+
+        # For non-Heading-1 paragraphs (including existing page-breaks),
+        # just copy them through.
+        new_para_list.append(p_elem)
+        i += 1
+
+    # Rebuild body with updated paragraph list.
+    for old in list(body):
+        body.remove(old)
+    for pe in new_para_list:
+        body.append(pe)
+
+    # ---- (d) Footer with centered PAGE field on all sections ----
     for section in doc.sections:
         footer = section.footer
         footer.is_linked_to_previous = False
@@ -990,7 +1221,66 @@ def post_process():
 
         tree = _lxml_et.parse(doc_xml_path)
         root = tree.getroot()
+        ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
         resized_count = 0
+
+        # ---- (F) keepNext / keepLines for orphan prevention before diagrams ---
+        NS = ns_w
+        body_elem = None
+        for ch in root:
+            tag_local = ch.tag.split("}")[-1] if "}" in ch.tag else ch.tag
+            if tag_local == "body":
+                body_elem = ch
+                break
+        if body_elem is None:
+            body_elem = root
+        para_list = [e for e in body_elem if e.tag == f"{{{NS}}}p"]
+        img_para_indices = set()
+        for idx, p in enumerate(para_list):
+            drawings = list(p.iter(f"{NS}drawing"))
+            if drawings:
+                img_para_indices.add(idx)
+                pp = p.find(f"{NS}pPr")
+                if pp is None:
+                    pp = _lxml_et.SubElement(p, f"{{{NS}}}pPr",
+                                             {f"{{{NS}}}docId": "0D51A601"})
+                kl = pp.find(f"{NS}keepLines")
+                if kl is None:
+                    _lxml_et.SubElement(pp, f"{{{NS}}}keepLines",
+                                        {f"{{{NS}}}val": "0"})
+        # Walk backwards from each image paragraph and set keepNext on
+        # ALL preceding text paragraphs so they stay with the image.
+        for idx in img_para_indices:
+
+            # Walk backwards: set keepNext on every preceding text paragraph.
+            j = idx - 1
+            while j >= 0:
+                prev_p = para_list[j]
+                # Stop at chapter-heading paragraphs (Heading 1 style).
+                pp_prev = prev_p.find(f"{NS}pPr")
+                if pp_prev is not None:
+                    ps = pp_prev.find(f"{NS}pStyle")
+                    if ps is not None and ps.get(VAL) == "Heading1":
+                        break
+                # Skip empty paragraphs.
+                has_text = False
+                for t_el in prev_p.iter(f"{{{NS}}}t"):
+                    if t_el.text and t_el.text.strip():
+                        has_text = True
+                        break
+                if not has_text:
+                    j -= 1
+                    continue
+                # Set keepNext.
+                pp_prev2 = prev_p.find(f"{NS}pPr")
+                if pp_prev2 is None:
+                    pp_prev2 = _lxml_et.SubElement(prev_p, f"{{{NS}}}pPr",
+                                                   {f"{{{NS}}}docId": "0D51A601"})
+                kn = pp_prev2.find(f"{NS}keepNext")
+                if kn is None:
+                    _lxml_et.SubElement(pp_prev2, f"{{{NS}}}keepNext",
+                                        {f"{{{NS}}}val": "0"})
+                j -= 1
 
         for elem in list(root.iter()):
             tag_local = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
