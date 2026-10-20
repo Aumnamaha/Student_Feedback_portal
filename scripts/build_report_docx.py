@@ -761,7 +761,15 @@ def post_process():
     VAL = w_ns + "val"  # attribute key for w:val
 
     def _is_pagebreak_only_para(p_elem):
-        """Check if a paragraph element contains ONLY a page-break."""
+        """Check if a paragraph element contains ONLY break elements (page-breaks,
+        line-breaks) with no text.  Used to remove explicit page-break divs that
+        are redundant because Heading 1 / TOC Heading styles carry pageBreakBefore."""
+        # Check for any text content.
+        for t_el in p_elem.iter(f"{w_ns}t"):
+            if t_el.text and t_el.text.strip():
+                return False
+        # Must contain at least one page break to be removed.
+        has_page_break = False
         for child in p_elem:
             tag_local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
             if tag_local == "r":
@@ -770,26 +778,32 @@ def post_process():
                                  if "}" in subchild.tag else subchild.tag)
                     if (sub_local == "br"
                             and subchild.get(f"{{{w_ns}}}type") == "page"):
-                        for txt in child.iter(f"{w_ns}t"):
-                            if txt.text and txt.text.strip():
-                                return False
-                        return True
-        return False
+                        has_page_break = True
+        return has_page_break
+
+    def _is_empty_para(p_elem):
+        """Check if a paragraph has no text content at all."""
+        for t_el in p_elem.iter(f"{w_ns}t"):
+            if t_el.text and t_el.text.strip():
+                return False
+        # Also check for non-text elements (images, tables etc).
+        for child in p_elem:
+            tag_local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+            if tag_local not in ("r",):
+                return False  # has an image/table/etc — not empty
+        return True
 
     # ---- (c) Create "TOC Heading" style and apply to Table of Contents
-    #         heading so the TOC does not list itself.  Also remove explicit
-    #         page-break paragraphs that immediately precede a Heading 1
-    #         paragraph (from Certificate / Declaration / Acknowledgement).
+    #         heading so the TOC does not list itself.
     try:
         toc_sty = doc.styles["TOC Heading"]
     except KeyError:
         from docx.enum.style import WD_STYLE_TYPE as WST
-        # Copy Heading 1 formatting but without outline level.
         h1_sty = doc.styles["Heading 1"]
         toc_sty = doc.styles.add_style("TOC Heading", WST.PARAGRAPH)
         tf = toc_sty.font
         tf.name = "Times New Roman"
-        tf.size = Pt(16)   # 16 pt
+        tf.size = Pt(16)
         tf.bold = True
         tp = toc_sty.paragraph_format
         tp.page_break_before = True
@@ -808,76 +822,30 @@ def post_process():
         except KeyError:
             pass  # style may have been removed — harmless.
 
-    # Ensure every Heading 1 paragraph (except the first one on title page)
-    # has an explicit page-break before it.  Pandoc does NOT apply
-    # pageBreakBefore from reference-doc styles, so we must add them
-    # explicitly in document.xml.
+    # Remove explicit page-break-only paragraphs (<w:br w:type="page"/>).
+    # These are redundant because Heading 1 / TOC Heading / Title already
+    # carry <w:pageBreakBefore/> in their styles, and pandoc inserts them
+    # from the markdown div blocks.  Keep only breaks that share a run with
+    # text (inline page breaks) — those must stay.
     body = doc.element.body
-    para_list = list(body)
-    new_para_list = []
-    h1_seen = False  # track if we've seen the title-page H1 already
-
-    i = 0
-    while i < len(para_list):
-        p_elem = para_list[i]
-        is_pagebreak_only = False
-        for child in p_elem:
-            tag_local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
-            if tag_local == "r":
-                for subchild in child:
-                    sub_local = subchild.tag.split("}")[-1] if "}" in subchild.tag else subchild.tag
-                    if (sub_local == "br"
-                            and subchild.get(f"{{{w_ns}}}type") == "page"):
-                        has_text = False
-                        for txt in child.iter(f"{w_ns}t"):
-                            if txt.text and txt.text.strip():
-                                has_text = True
-                                break
-                        if not has_text:
-                            is_pagebreak_only = True
-
-        # Check if this paragraph IS a Heading 1.
-        pp = p_elem.find(f"{w_ns}pPr")
-        is_h1 = False
-        if pp is not None:
-            ps = pp.find(f"{w_ns}pStyle")
-            if ps is not None and ps.get(VAL) == "Heading1":
-                is_h1 = True
-
-        # If this is a Heading 1 paragraph AND we haven't seen the title
-        # page H1 yet (first H1 is the title on page 1), skip it — keep as-is.
-        if is_h1 and not h1_seen:
-            new_para_list.append(p_elem)
-            h1_seen = True
-            i += 1
-            continue
-
-        # If this is a Heading 1 paragraph AND we've already seen the title,
-        # ensure there's a page-break before it.
-        if is_h1 and h1_seen:
-            # Check if previous element in new_para_list is already a page break.
-            has_pb_before = (len(new_para_list) > 0
-                             and _is_pagebreak_only_para(new_para_list[-1]))
-            if not has_pb_before:
-                # Insert an explicit page-break paragraph before this H1.
-                pb_p = body.makeelement(w_ns + "p")
-                r_el = _lxml_et.SubElement(pb_p, w_ns + "r")
-                _lxml_et.SubElement(r_el, w_ns + "br",
-                                    {w_ns + "type": "page"})
-                new_para_list.append(pb_p)
-            new_para_list.append(p_elem)
-            i += 1
-            continue
-
-        # For non-Heading-1 paragraphs (including existing page-breaks),
-        # just copy them through.
-        new_para_list.append(p_elem)
-        i += 1
-
-    # Rebuild body with updated paragraph list.
+    new_body_elems = []
+    for p_elem in list(body):
+        if _is_pagebreak_only_para(p_elem):
+            continue  # skip this explicit break paragraph
+        new_body_elems.append(p_elem)
+    # Also strip empty paragraphs that directly follow a removed page-break.
+    final_elems = []
+    prev_was_removed_pb = False
+    for pe in new_body_elems:
+        if prev_was_removed_pb and _is_empty_para(pe):
+            prev_was_removed_pb = False  # skip this empty para too
+        else:
+            final_elems.append(pe)
+            prev_was_removed_pb = False
+    # Rebuild body.
     for old in list(body):
         body.remove(old)
-    for pe in new_para_list:
+    for pe in final_elems:
         body.append(pe)
 
     # ---- (d) Footer with centered PAGE field on all sections ----
@@ -1097,7 +1065,302 @@ def post_process():
     # Save final docx.
     doc.save(OUTPUT_DOCX)
 
-    # ---- Post-save lxml pass: fix blue headings & footer ----
+    # ---- (e) Remove explicit page-break-only paragraphs via lxml pass ----
+    # python-docx's internal state may not reflect lxml body edits made
+    # before save.  Do this as a post-save XML pass on document.xml.
+    _pb_dir = _tempfile.mkdtemp(dir=BUILD_DIR, prefix="_pbfix_")
+    try:
+        with zipfile.ZipFile(OUTPUT_DOCX) as zf_in:
+            zf_in.extractall(_pb_dir)
+        doc_xml_path = os.path.join(_pb_dir, "word", "document.xml")
+        tree_pb = _lxml_et.parse(doc_xml_path)
+        root_pb = tree_pb.getroot()
+        ns_w_pb = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+        def _tag_pb(name):
+            return f"{{{ns_w_pb}}}{name}"
+
+        VAL_PB = f"{{{ns_w_pb}}}val"
+
+        def _is_pagebreak_only_elem(p_elem):
+            """Check if a <w:p> contains ONLY break elements (no text)."""
+            for t_el in p_elem.iter(f"{{{ns_w_pb}}}t"):
+                if t_el.text and t_el.text.strip():
+                    return False
+            has_pb = False
+            for child in p_elem:
+                tag_local = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                if tag_local == "r":
+                    for subchild in child:
+                        sub_local = (subchild.tag.split("}")[-1]
+                                     if "}" in subchild.tag else subchild.tag)
+                        if (sub_local == "br"
+                                and subchild.get(f"{{{ns_w_pb}}}type") == "page"):
+                            has_pb = True
+            return has_pb
+
+        body_elem = None
+        for ch in root_pb:
+            tag_local = ch.tag.split("}")[-1] if "}" in ch.tag else ch.tag
+            if tag_local == "body":
+                body_elem = ch
+                break
+        if body_elem is None:
+            body_elem = root_pb
+
+        # Remove page-break-only paragraphs.
+        new_body_elems = []
+        for p_elem in list(body_elem):
+            tag_local = p_elem.tag.split("}")[-1] if "}" in p_elem.tag else p_elem.tag
+            if tag_local == "p" and _is_pagebreak_only_elem(p_elem):
+                continue  # skip explicit page-break paragraph
+            new_body_elems.append(p_elem)
+        # Also strip empty paragraphs that directly follow a removed page-break.
+        final_elems = []
+        prev_was_removed_pb = False
+        for pe in new_body_elems:
+            tag_local_pe = pe.tag.split("}")[-1] if "}" in pe.tag else pe.tag
+            is_empty = (tag_local_pe == "p"
+                        and not any(t.text and t.text.strip()
+                                    for t in pe.iter(f"{{{ns_w_pb}}}t")
+                                    if True))  # no text content
+            # Also check it has no images/tables etc.
+            if is_empty:
+                for child in pe:
+                    cl = child.tag.split("}")[-1] if "}" in child.tag else child.tag
+                    if cl not in ("r",):
+                        is_empty = False  # has image/table/etc
+                        break
+            if prev_was_removed_pb and is_empty:
+                prev_was_removed_pb = False
+            else:
+                final_elems.append(pe)
+                prev_was_removed_pb = False
+        # Rebuild body.
+        for old in list(body_elem):
+            body_elem.remove(old)
+        for pe in final_elems:
+            body_elem.append(pe)
+
+        tree_pb.write(doc_xml_path, xml_declaration=True,
+                      encoding="UTF-8", standalone=True)
+
+        # Rebuild the docx with modified document.xml.
+        with zipfile.ZipFile(OUTPUT_DOCX, "w") as zf_out:
+            for root_dir2, dirs, files in os.walk(_pb_dir):
+                for fname in sorted(files):
+                    full = os.path.join(root_dir2, fname)
+                    arcname = os.path.relpath(full, _pb_dir)
+                    zf_out.write(full, arcname)
+        print("[C] Removed explicit page-break-only paragraphs")
+    finally:
+        shutil.rmtree(_pb_dir, ignore_errors=True)
+
+    # ---- (f) TOCHeading + custom-style font fix via lxml pass on styles.xml ----
+    _fix_dir = _tempfile.mkdtemp(dir=BUILD_DIR, prefix="_tocfix_")
+    try:
+        with zipfile.ZipFile(OUTPUT_DOCX) as zf_in:
+            zf_in.extractall(_fix_dir)
+        styles_path = os.path.join(_fix_dir, "word", "styles.xml")
+        if not os.path.exists(styles_path):
+            print("[C] Warning: styles.xml missing — skipping TOCHeading fix")
+        else:
+            tree_styles = _lxml_et.parse(styles_path)
+            root_s = tree_styles.getroot()
+            ns_w_sf = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+
+            def _tag(name):
+                return f"{{{ns_w_sf}}}{name}"
+
+            VAL_SF = f"{{{ns_w_sf}}}val"
+
+            def _child(parent, local_name):
+                for c in parent:
+                    cl = c.tag.split("}")[-1] if "}" in c.tag else c.tag
+                    if cl == local_name:
+                        return c
+                return None
+
+            def _find_rpr(style_elem):
+                rp = _child(style_elem, "rPr")
+                if rp is not None:
+                    return rp
+                rpd = _child(style_elem, "rPrDefault")
+                if rpd is not None:
+                    return _child(rpd, "rPr")
+                return None
+
+            def _insert_before(parent, new_el, ref_el):
+                siblings = list(parent)
+                idx = siblings.index(ref_el) if ref_el in siblings else len(siblings)
+                parent.insert(idx, new_el)
+
+            # ---- TOC Heading fix ----
+            for style_elem in root_s.iter(_tag("style")):
+                name_el = _child(style_elem, "name")
+                if name_el is None:
+                    continue
+                sname = name_el.get(VAL_SF, "")
+                if sname.lower() != "toc heading":
+                    continue
+
+                rp = _find_rpr(style_elem)
+                if rp is not None:
+                    # (1) Fix rFonts — explicit Times New Roman on all scripts.
+                    rfonts = _child(rp, "rFonts")
+                    if rfonts is None:
+                        sz_el = _child(rp, "sz")
+                        before = sz_el if sz_el is not None else (
+                            rp[0] if len(rp) > 0 else None)
+                        rfonts = _lxml_et.SubElement(
+                            rp, _tag("rFonts"),
+                            {_tag("ascii"): "Times New Roman",
+                             _tag("hAnsi"): "Times New Roman",
+                             _tag("cs"): "Times New Roman",
+                             _tag("eastAsia"): "Times New Roman"})
+                        if before:
+                            _insert_before(rp, rfonts, before)
+                    else:
+                        for attr in ("ascii", "hAnsi", "cs", "eastAsia"):
+                            rfonts.set(_tag(attr), "Times New Roman")
+
+                    # (2) Remove bold-off (w:b w:val="0") and set bold on.
+                    b_el = _child(rp, "b")
+                    if b_el is not None:
+                        b_val = b_el.get(VAL_SF)
+                        if b_val == "0":
+                            rp.remove(b_el)  # remove the element
+                            # Re-add bold on.
+                            sz_el2 = _child(rp, "sz")
+                            before2 = sz_el2 if sz_el2 is not None else (
+                                rp[0] if len(rp) > 0 else None)
+                            b_on = _lxml_et.SubElement(rp, _tag("b"))
+                            if before2:
+                                _insert_before(rp, b_on, before2)
+                        # If bold was already on, leave it.
+
+                    # (3) Size — ensure sz and szCs are 32 (16 pt × 2).
+                    for sz_el in rp.iter(_tag("sz")):
+                        sz_el.set(VAL_SF, "32")
+                    for szcs_el in rp.iter(_tag("szCs")):
+                        szcs_el.set(VAL_SF, "32")
+
+                    # (4) Color — force black.
+                    has_color = False
+                    for color_el in rp.iter(_tag("color")):
+                        has_color = True
+                        for attr in ("themeColor", "themeShade", "themeTint"):
+                            key = ns_w_sf + attr
+                            if key in color_el.attrib:
+                                del color_el.attrib[key]
+                        color_el.set(VAL_SF, "000000")
+                    if not has_color:
+                        sz_el3 = _child(rp, "sz")
+                        before3 = sz_el3 if sz_el3 is not None else (
+                            rp[0] if len(rp) > 0 else None)
+                        color_el = _lxml_et.SubElement(
+                            rp, _tag("color"), {VAL_SF: "000000"})
+                        if before3:
+                            _insert_before(rp, color_el, before3)
+
+                    # (5) pPr — keepNext, keepLines, pageBreakBefore,
+                    #     spacing before=0 after=240, outlineLvl="9".
+                    pp = _child(style_elem, "pPr")
+                    if pp is None:
+                        children = list(style_elem)
+                        for i, ch in enumerate(children):
+                            cl = (ch.tag.split("}")[-1]
+                                  if "}" in ch.tag else ch.tag)
+                            if cl == "name":
+                                pp = _lxml_et.SubElement(
+                                    style_elem, _tag("pPr"),
+                                    {ns_w_sf + "docId": "0D51A601"})
+                                style_elem.remove(ch)
+                                style_elem.insert(i + 1, pp)
+                                break
+                        if pp is None:
+                            pp = _lxml_et.SubElement(
+                                style_elem, _tag("pPr"),
+                                {ns_w_sf + "docId": "0D51A601"})
+                    # Set keepNext.
+                    if _child(pp, "keepNext") is None:
+                        _lxml_et.SubElement(pp, _tag("keepNext"),
+                                            {VAL_SF: "0"})
+                    # Set keepLines.
+                    if _child(pp, "keepLines") is None:
+                        _lxml_et.SubElement(pp, _tag("keepLines"),
+                                            {VAL_SF: "0"})
+                    # Set pageBreakBefore (may already exist).
+                    pbb = _child(pp, "pageBreakBefore")
+                    if pbb is None:
+                        _lxml_et.SubElement(pp, _tag("pageBreakBefore"))
+                    # Spacing before=0 after=240.
+                    spc = _child(pp, "spacing")
+                    if spc is None:
+                        spc = _lxml_et.SubElement(pp, _tag("spacing"))
+                    spc.set(_tag("before"), "0")
+                    spc.set(_tag("after"), "240")
+                    # Remove outlineLvl if it exists (set to 9).
+                    ol = _child(pp, "outlineLvl")
+                    if ol is not None:
+                        ol.set(VAL_SF, "9")
+                    else:
+                        _lxml_et.SubElement(pp, _tag("outlineLvl"),
+                                            {VAL_SF: "9"})
+
+                print("[C] Fixed TOC Heading style (Times New Roman 16 pt bold black)")
+
+            # ---- Fix all other custom styles with empty rFonts ----
+            for style_elem in root_s.iter(_tag("style")):
+                name_el = _child(style_elem, "name")
+                if name_el is None:
+                    continue
+                sname = name_el.get(VAL_SF, "").lower()
+                # Skip built-in styles that already have proper fonts.
+                skip_names = {
+                    "heading 1", "heading 2", "heading 3", "heading 4",
+                    "title", "normal", "body text", "first paragraph",
+                    "compact", "caption", "image caption", "captioned figure",
+                    "table", "toc heading"}
+                if sname in skip_names:
+                    continue
+
+                rp = _find_rpr(style_elem)
+                if rp is None:
+                    continue
+
+                rfonts = _child(rp, "rFonts")
+                has_empty_rfonts = (rfonts is not None
+                                    and all(
+                                        attr in rfonts.attrib
+                                        for attr in ("ascii", "hAnsi",
+                                                     "cs", "eastAsia")
+                                        if True))  # check any attr exists
+                # More robust: check if rFonts element has NO font attrs.
+                font_attrs = [k for k in rfonts.attrib.keys()
+                              if k.endswith('ascii') or k == f'{ns_w_sf}cs'] if rfonts is not None else []
+                needs_fix = False
+                if rfonts is not None:
+                    # Has empty rFonts — no ascii/hAnsi/cs/eastAsia set.
+                    has_any_font = any(
+                        rfonts.get(ns_w_sf + a) for a in
+                        ("ascii", "hAnsi", "cs", "eastAsia")
+                    )
+                    if not has_any_font:
+                        needs_fix = True
+                
+                if needs_fix:
+                    # Set Times New Roman unless this is Source Code / Verbatim.
+                    font_family = ("Courier New"
+                                   if sname in ("source code", "verbatim char")
+                                   else "Times New Roman")
+                    for attr in ("ascii", "hAnsi", "cs", "eastAsia"):
+                        rfonts.set(_tag(attr), font_family)
+
+            tree_styles.write(styles_path, xml_declaration=True,
+                              encoding="UTF-8", standalone=True)
+    finally:
+        shutil.rmtree(_fix_dir, ignore_errors=True)
     # After python-docx saves, do a raw XML pass on styles.xml to strip
     # any remaining theme attributes that cause blue headings.  Also verify
     # the footer PAGE field structure is correct.
