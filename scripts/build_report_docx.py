@@ -1473,7 +1473,9 @@ def post_process():
     # ---- Resize oversized images to fit A4 printable area ----
     # Use lxml to modify OUTPUT_DOCX directly (no ElementTree ns0: prefix bug).
     MAX_W_IN = 6.0
-    MAX_H_IN = 7.8
+    MAX_H_IN = 6.4          # reduced from 7.8 to let diagrams share page with intro
+    MIN_W_IN = 2.5           # never shrink below this width
+    TALL_FALLBACK_H_IN = 7.2 # if aspect ratio would make it < MIN_W_IN, use this height
     EMU_PER_INCH = 914400
 
     resize_dir = _tempfile.mkdtemp(dir=BUILD_DIR, prefix="_resize_final_")
@@ -1553,6 +1555,14 @@ def post_process():
                 cy = int(elem.get("cy", 0)) / EMU_PER_INCH
                 scale = min(1.0, MAX_W_IN / max(cx, 0.01), MAX_H_IN / max(cy, 0.01))
                 if scale < 1.0:
+                    new_cx = cx * scale
+                    # If scaling down makes it narrower than MIN_W_IN,
+                    # use the tall fallback height instead.
+                    if new_cx < MIN_W_IN:
+                        alt_scale = TALL_FALLBACK_H_IN / max(cy, 0.01)
+                        alt_cx = cx * alt_scale
+                        if alt_cx >= MIN_W_IN and alt_cx <= MAX_W_IN:
+                            scale = alt_scale
                     elem.set("cx", str(int(cx * scale * EMU_PER_INCH)))
                     elem.set("cy", str(int(cy * scale * EMU_PER_INCH)))
                     resized_count += 1
