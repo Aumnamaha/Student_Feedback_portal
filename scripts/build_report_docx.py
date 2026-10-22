@@ -1471,12 +1471,14 @@ def post_process():
         shutil.rmtree(post_dir, ignore_errors=True)
 
     # ---- Resize oversized images to fit A4 printable area ----
-    # Use lxml to modify OUTPUT_DOCX directly (no ElementTree ns0: prefix bug).
+    # Single source of truth: native pixel size from PIL image file.
+    # Set EXACTLY the same (cx, cy) on BOTH wp:extent and a:xfrm/a:ext.
     MAX_W_IN = 6.0
-    MAX_H_IN = 6.4          # reduced from 7.8 to let diagrams share page with intro
-    MIN_W_IN = 2.5           # never shrink below this width
-    TALL_FALLBACK_H_IN = 7.2 # if aspect ratio would make it < MIN_W_IN, use this height
+    MAX_H_IN = 8.4          # usable page height is ~9.7 in; caption + heading need rest
     EMU_PER_INCH = 914400
+    DPI = 150                # baseline dpi for width/height conversion
+
+    from PIL import Image as _PIL_Image
 
     resize_dir = _tempfile.mkdtemp(dir=BUILD_DIR, prefix="_resize_final_")
     try:
@@ -1489,8 +1491,14 @@ def post_process():
         ns_w = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
         resized_count = 0
 
-        # ---- (F) keepNext / keepLines for orphan prevention before diagrams ---
-        NS = ns_w
+        # Namespace helpers for Clark notation.
+        NS_W = ns_w
+        NS_WP = "http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing"
+        NS_A = "http://schemas.openxmlformats.org/drawingml/2006/main"
+        NS_PIC = "http://schemas.openxmlformats.org/drawingml/2006/picture"
+        REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
+
+        # ---- (F) keepNext / keepLines for orphan prevention ---
         body_elem = None
         for ch in root:
             tag_local = ch.tag.split("}")[-1] if "}" in ch.tag else ch.tag
@@ -1499,75 +1507,141 @@ def post_process():
                 break
         if body_elem is None:
             body_elem = root
-        para_list = [e for e in body_elem if e.tag == f"{{{NS}}}p"]
+        para_list = [e for e in body_elem if e.tag == f"{{{NS_W}}}p"]
+
+        # Remove keepNext from text paragraphs BEFORE image paragraphs.
         img_para_indices = set()
         for idx, p in enumerate(para_list):
-            drawings = list(p.iter(f"{NS}drawing"))
+            drawings = list(p.iter(f"{NS_W}drawing"))
             if drawings:
                 img_para_indices.add(idx)
-                pp = p.find(f"{NS}pPr")
-                if pp is None:
-                    pp = _lxml_et.SubElement(p, f"{{{NS}}}pPr",
-                                             {f"{{{NS}}}docId": "0D51A601"})
-                kl = pp.find(f"{NS}keepLines")
-                if kl is None:
-                    _lxml_et.SubElement(pp, f"{{{NS}}}keepLines",
-                                        {f"{{{NS}}}val": "0"})
-        # Walk backwards from each image paragraph and set keepNext on
-        # ALL preceding text paragraphs so they stay with the image.
-        for idx in img_para_indices:
-
-            # Walk backwards: set keepNext on every preceding text paragraph.
+        
+        # Clear keepNext on preceding text paragraphs (not empty ones).
+        for idx in sorted(img_para_indices):
             j = idx - 1
             while j >= 0:
                 prev_p = para_list[j]
-                # Stop at chapter-heading paragraphs (Heading 1 style).
-                pp_prev = prev_p.find(f"{NS}pPr")
+                pp_prev = prev_p.find(f"{NS_W}pPr")
                 if pp_prev is not None:
-                    ps = pp_prev.find(f"{NS}pStyle")
+                    ps = pp_prev.find(f"{NS_W}pStyle")
                     if ps is not None and ps.get(VAL) == "Heading1":
                         break
-                # Skip empty paragraphs.
-                has_text = False
-                for t_el in prev_p.iter(f"{{{NS}}}t"):
-                    if t_el.text and t_el.text.strip():
-                        has_text = True
-                        break
-                if not has_text:
-                    j -= 1
-                    continue
-                # Set keepNext.
-                pp_prev2 = prev_p.find(f"{NS}pPr")
-                if pp_prev2 is None:
-                    pp_prev2 = _lxml_et.SubElement(prev_p, f"{{{NS}}}pPr",
-                                                   {f"{{{NS}}}docId": "0D51A601"})
-                kn = pp_prev2.find(f"{NS}keepNext")
-                if kn is None:
-                    _lxml_et.SubElement(pp_prev2, f"{{{NS}}}keepNext",
-                                        {f"{{{NS}}}val": "0"})
+                has_text = any(
+                    t_el.text and t_el.text.strip()
+                    for t_el in prev_p.iter(f"{{{NS_W}}}t")
+                )
+                if has_text:
+                    pp_prev2 = prev_p.find(f"{NS_W}pPr")
+                    if pp_prev2 is not None:
+                        kn = pp_prev2.find(f"{NS_W}keepNext")
+                        if kn is not None:
+                            pp_prev2.remove(kn)
                 j -= 1
+        
+        # Set keepLines on image paragraphs (so diagram stays with its caption).
+        for idx in img_para_indices:
+            p = para_list[idx]
+            pp = p.find(f"{NS_W}pPr")
+            if pp is None:
+                pp = _lxml_et.SubElement(p, f"{{{NS_W}}}pPr",
+                                         {f"{{{NS_W}}}docId": "0D51A601"})
+            kl = pp.find(f"{NS_W}keepLines")
+            if kl is None:
+                _lxml_et.SubElement(pp, f"{{{NS_W}}}keepLines",
+                                    {f"{{{NS_W}}}val": "0"})
 
+        # ---- Resize each inline drawing from native pixel dimensions ---
         for elem in list(root.iter()):
             tag_local = elem.tag.split("}")[-1] if "}" in elem.tag else elem.tag
-            # Match wp:extent and a:ext (both control image size).
-            if tag_local == "ext":
-                cx = int(elem.get("cx", 0)) / EMU_PER_INCH
-                cy = int(elem.get("cy", 0)) / EMU_PER_INCH
-                scale = min(1.0, MAX_W_IN / max(cx, 0.01), MAX_H_IN / max(cy, 0.01))
-                if scale < 1.0:
-                    new_cx = cx * scale
-                    # If scaling down makes it narrower than MIN_W_IN,
-                    # use the tall fallback height instead.
-                    if new_cx < MIN_W_IN:
-                        alt_scale = TALL_FALLBACK_H_IN / max(cy, 0.01)
-                        alt_cx = cx * alt_scale
-                        if alt_cx >= MIN_W_IN and alt_cx <= MAX_W_IN:
-                            scale = alt_scale
-                    elem.set("cx", str(int(cx * scale * EMU_PER_INCH)))
-                    elem.set("cy", str(int(cy * scale * EMU_PER_INCH)))
-                    resized_count += 1
+            if tag_local != "inline":
+                continue
 
-        tree.write(doc_xml_path, xml_declaration=True, encoding="UTF-8", standalone=True)
+            ext_el = elem.find(f"{{{NS_WP}}}extent")
+            if ext_el is None:
+                continue
+
+            # Get image file name from pic:cNvPr (first occurrence).
+            cnp_el = None
+            for _el in elem.iter():
+                tl = _el.tag.split("}")[-1] if "}" in _el.tag else _el.tag
+                if tl == "cNvPr" and NS_PIC in _el.tag:
+                    cnp_el = _el
+                    break
+            img_name = cnp_el.get("descr", "") if cnp_el else ""
+
+            # Get rId from a:blip (first occurrence inside this inline).
+            blip_el = None
+            for _el in elem.iter():
+                tl = _el.tag.split("}")[-1] if "}" in _el.tag else _el.tag
+                if tl == "blip" and NS_A in _el.tag:
+                    blip_el = _el
+                    break
+            rId = None
+            if blip_el is not None:
+                rId = (blip_el.get(
+                    f"{{{REL_NS}}}embed") or "")
+
+            # Determine the image file path.
+            img_path = None
+            if img_name.startswith("docs/images/") or img_name.startswith("docs/screenshots/"):
+                full_img_path = os.path.join(REPO_ROOT, img_name)
+                if os.path.exists(full_img_path):
+                    img_path = full_img_path
+
+            # Compute target size from native pixel dimensions.
+            if img_path is not None:
+                try:
+                    with _PIL_Image.open(img_path) as img:
+                        w_px, h_px = img.size
+                    width_in = w_px / DPI
+                    height_in = h_px / DPI
+                    scale = min(1.0,
+                                MAX_W_IN / max(width_in, 0.01),
+                                MAX_H_IN / max(height_in, 0.01))
+                    new_cx = int(width_in * scale * EMU_PER_INCH)
+                    new_cy = int(height_in * scale * EMU_PER_INCH)
+                except Exception:
+                    continue
+            else:
+                # Fallback: use existing wp:extent values and apply cap.
+                old_cx = int(ext_el.get("cx", 0))
+                old_cy = int(ext_el.get("cy", 0))
+                cx_in = old_cx / EMU_PER_INCH
+                cy_in = old_cy / EMU_PER_INCH
+                scale = min(1.0,
+                            MAX_W_IN / max(cx_in, 0.01),
+                            MAX_H_IN / max(cy_in, 0.01))
+                new_cx = int(old_cx * scale)
+                new_cy = int(old_cy * scale)
+
+            # Update BOTH wp:extent and a:xfrm/a:ext to the same values.
+            if int(ext_el.get("cx", 0)) != new_cx or \
+               int(ext_el.get("cy", 0)) != new_cy:
+                ext_el.set("cx", str(new_cx))
+                ext_el.set("cy", str(new_cy))
+
+                # Update a:ext inside pic:spPr/a:xfrm.
+                for _el in elem.iter():
+                    tl = _el.tag.split("}")[-1] if "}" in _el.tag else _el.tag
+                    if tl == "xfrm" and NS_A in _el.tag:
+                        # Found a:xfrm; look inside for a:ext child.
+                        for _child in list(_el):
+                            cl = _child.tag.split("}")[-1] if "}" in _child.tag else _child.tag
+                            if cl == "ext" and NS_A in _child.tag:
+                                _child.set("cx", str(new_cx))
+                                _child.set("cy", str(new_cy))
+                        break
+
+                # Zero out wp:effectExtent if present.
+                eff_el = elem.find(f"{{{NS_WP}}}effectExtent")
+                if eff_el is not None:
+                    for attr in ("b", "l", "r", "t"):
+                        eff_el.set(attr, "0")
+
+                resized_count += 1
+
+        tree.write(doc_xml_path, xml_declaration=True,
+                   encoding="UTF-8", standalone=True)
 
         # Rebuild the docx zip from modified files — lxml preserves prefixes.
         with zipfile.ZipFile(OUTPUT_DOCX, "w") as zf_out:
@@ -1580,6 +1654,72 @@ def post_process():
         print(f"[C] Resized {resized_count} image extents to fit A4")
     finally:
         shutil.rmtree(resize_dir, ignore_errors=True)
+
+    # ---- Remove blank-page-causing empty/drawing-only paragraphs before H1 ---
+    try:
+        with zipfile.ZipFile(OUTPUT_DOCX) as zf_in:
+            zf_in.extractall(resize_dir + "_blank")
+        doc_xml_path2 = os.path.join(
+            resize_dir + "_blank", "word", "document.xml")
+
+        tree2 = _lxml_et.parse(doc_xml_path2)
+        root2 = tree2.getroot()
+
+        body2 = None
+        for ch in root2:
+            tl = ch.tag.split("}")[-1] if "}" in ch.tag else ch.tag
+            if tl == "body":
+                body2 = ch
+                break
+        if body2 is None:
+            body2 = root2
+
+        para_list2 = [e for e in body2 if e.tag == f"{{{ns_w}}}p"]
+
+        def _is_empty_para(p):
+            """Return True if paragraph has no text and no drawing."""
+            has_text = any(
+                t_el.text and t_el.text.strip()
+                for t_el in p.iter(f"{{{ns_w}}}t")
+            )
+            has_drawing = len(list(p.iter(f"{ns_w}drawing"))) > 0 or \
+                          len(list(p.iter(f"{ns_w}pict"))) > 0
+            return not has_text and not has_drawing
+
+        blank_removed = 0
+        to_remove = []
+        for i, p in enumerate(para_list2):
+            pp = p.find(f"{{{ns_w}}}pPr")
+            if pp is None:
+                continue
+            ps = pp.find(f"{{{ns_w}}}pStyle")
+            if ps is None:
+                continue
+            style_val = ps.get(VAL, "")
+            if style_val in ("Heading1", "TOCHeading"):
+                # Remove immediately preceding empty paragraph.
+                prev_idx = i - 1
+                while prev_idx >= 0 and _is_empty_para(para_list2[prev_idx]):
+                    to_remove.append(prev_idx)
+                    prev_idx -= 1
+
+        for idx in sorted(set(to_remove), reverse=True):
+            body2.remove(para_list2[idx])
+            blank_removed += 1
+
+        tree2.write(doc_xml_path2, xml_declaration=True,
+                    encoding="UTF-8", standalone=True)
+
+        with zipfile.ZipFile(OUTPUT_DOCX, "w") as zf_out:
+            for root_dir, dirs, files in os.walk(resize_dir + "_blank"):
+                for fname in sorted(files):
+                    full = os.path.join(root_dir, fname)
+                    arcname = os.path.relpath(full, resize_dir + "_blank")
+                    zf_out.write(full, arcname)
+
+        print(f"[C] Removed {blank_removed} blank paragraphs before headings")
+    finally:
+        shutil.rmtree(resize_dir + "_blank", ignore_errors=True)
 
     # Set updateFields in settings.xml (must be after python-docx writes).
     _set_update_fields(OUTPUT_DOCX)
