@@ -1323,13 +1323,25 @@ The user interface of the Student Feedback Management System follows a clean, mi
 ### Login Page (`login.html`)
 A centered card layout containing a form with two input fields (identifier/email or roll number, password), a "Login" button, and a link to the registration page for new students. Flash messages appear above the form for success or error feedback. The design is minimal — no navigation bar (user is not authenticated yet). Background uses the light gray color with a white card centered vertically and horizontally on the viewport.
 
+![Figure 16.1: Login Page](docs/screenshots/login.png){width=6.0in}
+
+*Figure 16.1: Login page — multi-role authentication form for students, admins, and faculty.*
+
 ### Registration Page (`register.html`)
 Similar centered card layout to login but with four input fields: full name, roll number, email address, and password (with confirm-password field for verification). A "Register" button submits the form; a link back to login is provided below. Client-side JavaScript validates that all fields are filled, email format is correct, and passwords match before allowing submission.
+
+![Figure 16.2: Registration Page](docs/screenshots/registration.png){width=6.0in}
+
+*Figure 16.2: Registration page — student account creation form with roll number verification.*
 
 ### Student Dashboard (`student_dashboard.html`)
 A full-width page with a navigation bar at the top (displaying user's name, role badge, and logout button). The main content area contains two sections:
 1. **Feedback Submission Form**: A card containing dropdown for category selection, star rating selector (interactive 5-star component), multi-line text textarea for comment, and an "I want to remain anonymous" checkbox with a submit button.
 2. **My Feedback History**: A table below the form showing all previously submitted feedback entries with columns: Category (color-coded badge), Rating (star display), Comment Preview (truncated at ~100 characters), Status (colored badge matching Pending/In Progress/Resolved color scheme), and Date.
+
+![Figure 16.3: Student Dashboard](docs/screenshots/student_dashboard.png){width=6.0in}
+
+*Figure 16.3: Student dashboard — feedback submission form with personal history table.*
 
 ### Admin Dashboard (`admin_dashboard.html`)
 A full-width page with admin navigation bar. The main content area contains:
@@ -1341,6 +1353,10 @@ Accessed by clicking a row in the admin dashboard table. Displays full details o
 
 ### Faculty Dashboard (`faculty_dashboard.html`)
 A full-width page with faculty navigation bar and a stats row at the top showing total feedback count, pending review count, and escalated item count as large number cards. Below is a table of department-filtered feedback (excluding 5-star ratings) with columns: Date, Category (with department sub-label), Rating stars, Status badge with MATCH/ESCALATED tags, Subject Match indicator, Comment preview, Countdown timer showing time remaining before escalation deadline, and a "Review" action link. Items matching the faculty's subject_taught are highlighted in green; escalated items have red background highlighting. The table is sorted by priority: subject matches first, then pinned/escalated items.
+
+![Figure 16.4: Faculty Dashboard](docs/screenshots/faculty_dashboard.png){width=6.0in}
+
+*Figure 16.4: Faculty dashboard — department-filtered feedback with escalation tracking and countdown timers.*
 
 ### Faculty Feedback Detail (`faculty_feedback_detail.html`)
 Accessed by clicking "Review" on a feedback item. Displays full details including category, rating, status badge, department, subject (if applicable), semester/year, student class and year (derived from roll number — never PII exposed), submission timestamp, review/escalation deadlines with countdown timers, and the full comment text. Below are action buttons for status transitions: Pending → In Progress button, In Progress → Resolved button, and when resolved — verification buttons (Verified/Closed or Verification Failed). A discussion thread section shows all comments posted by matching faculty in chronological order with a form to post new comments via AJAX (JSON POST with CSRF headers). When the item is Verified/Closed or Verification Failed, comments are disabled.

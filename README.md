@@ -197,17 +197,40 @@ The server will start on `http://127.0.0.1:5000` (or another port if configured)
 
 ## Screenshots
 
-| Student Registration | Student Dashboard |
-|----------------------|-------------------|
-| ![Registration](docs/screenshots/registration.png) | ![Dashboard](docs/screenshots/student_dashboard.png) |
+![Login](docs/screenshots/login.png)
+*Login page — multi-role authentication with student, admin, and faculty options.*
 
-| Admin Dashboard | Feedback Detail |
-|-----------------|-----------------|
-| ![Admin Table](docs/screenshots/admin_dashboard.png) | ![Detail](docs/screenshots/feedback_detail.png) |
+![Registration](docs/screenshots/registration.png)
+*Student registration form with roll number, email, and password fields.*
 
-| Reports Page | Login Screen |
-|-------------|--------------|
-| ![Reports](docs/screenshots/reports.png) | ![Login](docs/screenshots/login.png) |
+![Student Dashboard](docs/screenshots/student_dashboard.png)
+*Student dashboard — feedback submission form plus personal history table.*
+
+![Admin Dashboard](docs/screenshots/admin_dashboard_all.png)
+*Admin dashboard — full feedback table with multi-criteria filter bar.*
+
+![Faculty Dashboard](docs/screenshots/faculty_dashboard.png)
+*Faculty dashboard — department-filtered feedback with escalation badges and countdown timers.*
+
+![Faculty Feedback Detail](docs/screenshots/faculty_feedback_detail.png)
+*Faculty feedback detail view — review, comment posting, and verification workflow.*
+
+![Verification](docs/screenshots/verification.png)
+*Resolution verification screen — Verified/Closed or Verification Failed actions.*
+
+![Reports — Ratings](docs/screenshots/reports_ratings.png)
+*Reports page showing average ratings per category as a horizontal bar chart.*
+
+### Design Diagrams
+
+![Use Case Diagram](docs/images/01_use_case_diagram.png)
+*System use case diagram — actors, relationships, and core interactions.*
+
+![Class Diagram](docs/images/02_class_diagram.png)
+*Domain class diagram — User, Faculty, Feedback, Comment models with associations.*
+
+![ER Diagram](docs/images/05_er_diagram.png)
+*Entity-Relationship diagram — database schema relationships and cardinality.*
 
 ---
 
