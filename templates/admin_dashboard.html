@@ -32,7 +32,7 @@
     <h1>Admin Dashboard</h1>
     <a href="{{ url_for('admin.faculty_list') }}" class="btn-primary" style="padding:0.4rem 1rem; font-size:0.9rem;">Manage Faculty</a>
 </div>
-<p class="subtitle">{{ total_count }} feedback entry{{ 'ies' if total_count != 1 else 'y' }}</p>
+<p class="subtitle">{{ total_count }} feedback {{ 'entries' if total_count != 1 else 'entry' }}</p>
 
 <!-- ===== FILTER BAR ===== -->
 <form method="GET" action="{{ url_for('admin.dashboard') }}" class="filters">
