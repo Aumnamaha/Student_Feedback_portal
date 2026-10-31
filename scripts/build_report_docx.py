@@ -61,7 +61,7 @@ NARROW_IMAGES = {
 
 def preprocess_markdown():
     """Read Project_Report.md → write build/_preprocessed.md."""
-    with open(INPUT_MD) as f:
+    with open(INPUT_MD, encoding='utf-8') as f:
         content = f.read()
 
     # (a) Replace page-break divs with pandoc raw openxml block
@@ -104,7 +104,8 @@ def preprocess_markdown():
             # keeping width proportional but no wider than 5.5 in.
             return f'![{alt}]({full_path}){{width=5.5in;height=7.8in}}'
         elif base in NARROW_IMAGES:
-            return f'![{alt}]({full_path}){{width=6.3in}}'
+            # Sequence diagrams: keep at least 4.5in wide for legibility
+            return f'![{alt}]({full_path}){{width=6.0in}}'
         return m.group(0)
 
     content = _re.sub(r'!\[(.*?)\]\((docs/images/[^)]+)\)', _size_image, content)
@@ -175,8 +176,9 @@ def preprocess_markdown():
                 if os.path.exists(full_path):
                     new_lines2.append("")
                     new_lines2.append(caption)
+                    # Screenshots: max 5.2in wide so two with captions fit on one page
                     new_lines2.append(
-                        f'![Figure 19.{idx}: {name}]({path}){{width=6.0in}}'
+                        f'![Figure 19.{idx}: {name}]({path}){{width=5.2in}}'
                     )
                 else:
                     new_lines2.append("")
@@ -194,7 +196,7 @@ def preprocess_markdown():
     content = "\n".join(new_lines2)
 
     os.makedirs(BUILD_DIR, exist_ok=True)
-    with open(PREPROC_MD, "w") as f:
+    with open(PREPROC_MD, "w", encoding="utf-8") as f:
         f.write(content)
     print(f"[A] Preprocessed markdown → {PREPROC_MD} ({os.path.getsize(PREPROC_MD)} bytes)")
 
@@ -988,7 +990,8 @@ def post_process():
             try:
                 temp_img_p.clear()
                 run = temp_img_p.add_run()
-                run.add_picture(full_path, width=DInches(6.0))
+                # Screenshots at 5.2in so two with captions fit on one page
+                run.add_picture(full_path, width=DInches(5.2))
                 img_body_elem = temp_img_p._element
                 parent_elem.insert(idx_in_parent, img_body_elem)
             except Exception as e:
@@ -1473,10 +1476,10 @@ def post_process():
     # ---- Resize oversized images to fit A4 printable area ----
     # Single source of truth: native pixel size from PIL image file.
     # Set EXACTLY the same (cx, cy) on BOTH wp:extent and a:xfrm/a:ext.
-    MAX_W_IN = 6.0
-    MAX_H_IN = 8.4          # usable page height is ~9.7 in; caption + heading need rest
+    MAX_W_IN = 5.8            # general cap — screenshots at 5.2in via per-image logic
+    MAX_H_IN = 8.0            # usable page height ~9.7in; caption + heading need rest
     EMU_PER_INCH = 914400
-    DPI = 150                # baseline dpi for width/height conversion
+    DPI = 150                 # baseline dpi for width/height conversion
 
     from PIL import Image as _PIL_Image
 
@@ -1754,7 +1757,7 @@ def verify():
 
     # 3. Count Heading 1 paragraphs — compute true expected from markdown H1 lines.
     h1_count = sum(1 for p in doc.paragraphs if p.style.name == "Heading 1")
-    with open(INPUT_MD) as f:
+    with open(INPUT_MD, encoding='utf-8') as f:
         md_lines = f.readlines()
     # All top-level headings (lines starting with exactly one '# ' at column 0).
     in_code_block = False
@@ -1861,54 +1864,41 @@ def verify():
                         else:
                             print(f"[FAIL] Page count {pages} OUTSIDE acceptance range [70,130]")
 
-                        # Near-empty page check (using pdftotext).
-                        import tempfile as _tmpf2
+                        # Near-empty page check using PyMuPDF (cross-platform).
+                        import fitz
                         empty_count = 0
                         empty_pages = []
-                        tmp_txt_dir = _tmpf2.mkdtemp(dir=BUILD_DIR, prefix="_empty_check_")
-                        try:
-                            for pg in range(1, pages + 1):
-                                r2 = subprocess.run(
-                                    ["pdftotext", "-f", str(pg), "-l", str(pg),
-                                     pdf_path, os.path.join(tmp_txt_dir, f"pg_{pg}.txt")],
-                                    capture_output=True, text=True, timeout=30,
-                                )
-                                if r2.returncode == 0:
-                                    txt_path = os.path.join(tmp_txt_dir, f"pg_{pg}.txt")
-                                    with open(txt_path) as tf:
-                                        words = len(tf.read().split())
-                                    if words < 25:
-                                        empty_count += 1
-                                        empty_pages.append(pg)
-                            print(f"[INFO] Near-empty pages (<25 words): {empty_count}")
-                            print(f"       Page numbers: {empty_pages[:10]}{'...' if len(empty_pages) > 10 else ''}")
-                            if empty_count <= 35:
-                                print(f"[PASS] Near-empty page count within limit (≤35)")
-                            else:
-                                print(f"[FAIL] Near-empty pages {empty_count} exceeds limit 35")
-                        finally:
-                            shutil.rmtree(tmp_txt_dir, ignore_errors=True)
+                        with fitz.open(pdf_path) as pdf_doc:
+                            for pg_num in range(len(pdf_doc)):
+                                text = pdf_doc[pg_num].get_text().strip()
+                                words = len(text.split()) if text else 0
+                                if words < 25:
+                                    empty_count += 1
+                                    empty_pages.append(pg_num + 1)
+                        print(f"[INFO] Near-empty pages (<25 words): {empty_count}")
+                        print(f"       Page numbers: {empty_pages[:10]}{'...' if len(empty_pages) > 10 else ''}")
+                        if empty_count <= 35:
+                            print(f"[PASS] Near-empty page count within limit (≤35)")
+                        else:
+                            print(f"[FAIL] Near-empty pages {empty_count} exceeds limit 35")
 
-                        # Render sample pages to PNG for visual check.
+                        # Render sample pages to PNG using PyMuPDF (cross-platform).
                         try:
-                            import subprocess as _subp2
-                            reader = PdfReader(pdf_path)
-                            sample_pages = [0]  # page 1 (title)
-                            if len(reader.pages) > 5:
-                                sample_pages.append(6)  # Use Case diagram (~page 7)
-                            if len(reader.pages) > 12:
-                                sample_pages.append(12)  # Sequence diagram
-                            if len(reader.pages) > 15:
-                                sample_pages.append(15)  # Activity diagram
-                            if len(reader.pages) > 30:
-                                sample_pages.append(30)  # First screenshot frame
-                            for pg in sample_pages:
-                                png_path = os.path.join(BUILD_DIR, f"check_page_{pg+1}.png")
-                                _subp2.run([
-                                    "pdftoppm", "-r", "60", "-png",
-                                    pdf_path, png_path.replace(".png", ""),
-                                ], capture_output=True)
-                                if os.path.exists(png_path):
+                            with fitz.open(pdf_path) as pdf_doc:
+                                sample_pages = [0]
+                                if len(pdf_doc) > 5:
+                                    sample_pages.append(6)
+                                if len(pdf_doc) > 12:
+                                    sample_pages.append(12)
+                                if len(pdf_doc) > 15:
+                                    sample_pages.append(15)
+                                if len(pdf_doc) > 30:
+                                    sample_pages.append(30)
+                                for pg in sample_pages:
+                                    png_path = os.path.join(BUILD_DIR, f"check_page_{pg+1}.png")
+                                    page = pdf_doc[pg]
+                                    pix = page.get_pixmap(dpi=60)
+                                    pix.save(png_path)
                                     sz = os.path.getsize(png_path)
                                     print(f"       Rendered page {pg+1} → {sz} bytes")
                         except Exception as e2:

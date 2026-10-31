@@ -11,18 +11,18 @@ Object-Oriented Software Engineering (OOSE) Lab
 
 | Field           | Details                              |
 |-----------------|--------------------------------------|
-| **Name**        | [Student Name]                       |
-| **Roll Number** | [Roll Number]                        |
-| **Section**     | [Section]                            |
-| **Group**       | [Group, if applicable]               |
+| **Name**        | T. Aum Namaha                       |
+| **Reg. No.** | 2023001973                        |
+| **Section**     | AIML B                            |
+| **Group**       | 9               |
 | **Subject**     | Object-Oriented Software Engineering |
-| **Instructor**  | [Faculty Name]                       |
-| **Date**        | [Submission Date]                    |
+| **Instructor**  | Dr. Phani Sheetal                       |
+| **Date**        | 31/10/2026                    |
 
 <br><br>
 
 **Department of Computer Science & Engineering / Artificial Intelligence & Machine Learning**  
-**[College/University Name]**  
+**GITAM University, Hyderabad**  
 **[Academic Year: 2025–2026]**
 
 ---
@@ -31,11 +31,11 @@ Object-Oriented Software Engineering (OOSE) Lab
 
 # Certificate
 
-This is to certify that **[Student Name]**, Roll No. **[Roll Number]**, of **[Section]**, Department of Computer Science & Engineering / Artificial Intelligence & Machine Learning, **[College/University Name]**, has satisfactorily completed the project **"Student Feedback Management System"** for the course **Object-Oriented Software Engineering (OOSE) Lab** during the academic year **2025–2026**.
+This is to certify that **T. Aum Namaha**, Reg. No. **2023001973**, of **AIML B**, Department of Computer Science & Engineering / Artificial Intelligence & Machine Learning, **GITAM University, Hyderabad**, has satisfactorily completed the project **"Student Feedback Management System"** for the course **Object-Oriented Software Engineering (OOSE) Lab** during the academic year **2025–2026**.
 
 <br><br>
 
-Project Guide / Instructor: ____________________  [Faculty Name]
+Project Guide / Instructor: ____________________  Dr. Phani Sheetal
 
 <br><br>
 
@@ -43,13 +43,13 @@ Head of Department: _____________________________
 
 <br><br>
 
-Date: _______________  [Submission Date]
+Date: _______________  31/10/2026
 
 <div style="page-break-after: always;"></div>
 
 # Declaration
 
-I hereby declare that the work presented in this project report entitled **"Student Feedback Management System"** is an original effort carried out by me, **[Student Name]** (Roll No. **[Roll Number]**), as part of the course requirements for Object-Oriented Software Engineering (OOSE) Lab at **[College/University Name]**.
+I hereby declare that the work presented in this project report entitled **"Student Feedback Management System"** is an original effort carried out by me, **T. Aum Namaha** (Reg. No. **2023001973**), as part of the course requirements for Object-Oriented Software Engineering (OOSE) Lab at **GITAM University, Hyderabad**.
 
 The material embodied in this report has not been submitted to any other institution or university for the award of any degree or diploma. All sources of information and references used in this work have been duly acknowledged and cited herein.
 
@@ -57,21 +57,14 @@ The material embodied in this report has not been submitted to any other institu
 
 Signature: _____________________________
 
-Name: [Student Name]
+Name: T. Aum Namaha
 
-Roll No.: [Roll Number]
+Reg. No.: 2023001973
 
-Date: [Submission Date]
-
-<div style="page-break-after: always;"></div>
-
-# Acknowledgement
-
-I would like to express my sincere gratitude to **[Faculty Name]**, Project Guide / Instructor for the Object-Oriented Software Engineering (OOSE) Lab course, for their invaluable guidance, constructive feedback, and continuous support throughout the development of this project. Their expertise in software engineering principles was instrumental in shaping the design and implementation of the Student Feedback Management System.
-
-I also thank the Department of Computer Science & Engineering / Artificial Intelligence & Machine Learning at **[College/University Name]** for providing the infrastructure and academic environment that enabled this project to take shape. Finally, I am grateful to my family and friends for their encouragement and patience during the course of this work.
+Date: 31/10/2026
 
 <div style="page-break-after: always;"></div>
+
 
 # Table of Contents
 
@@ -80,35 +73,32 @@ I also thank the Department of Computer Science & Engineering / Artificial Intel
 | 1   | Title Page |
 | 2   | Certificate |
 | 3   | Declaration |
-| 4   | Acknowledgement |
-| 5   | Abstract |
-| 6   | Table of Contents |
-| 7   | Chapter 1: Introduction |
-| 8   | Chapter 2: Problem Statement |
-| 9   | Chapter 3: Objectives |
-| 10  | Chapter 4: Existing System |
-| 11  | Chapter 5: Proposed System |
-| 12  | Chapter 6: Scope |
-| 13  | Chapter 7: Functional Requirements |
-| 14  | Chapter 8: Non-Functional Requirements |
-| 15  | Chapter 9: System Architecture |
-| 16  | Chapter 10: Use Case Diagram |
-| 17  | Chapter 11: Class Diagram |
-| 18  | Chapter 12: Sequence Diagrams |
-| 19  | Chapter 13: Activity Diagrams |
-| 20  | Chapter 14: ER Diagram |
-| 21  | Chapter 15: Database Design |
-| 22  | Chapter 16: UI Design |
-| 23  | Chapter 17: Implementation |
-| 24  | Chapter 18: Testing |
-| 25  | Chapter 19: Results |
-| 26  | Chapter 20: Advantages |
-| 27  | Chapter 21: Limitations |
-| 28  | Chapter 22: Future Enhancements |
-| 29  | Chapter 23: Conclusion |
-| 30  | Chapter 24: References |
-
-*Chapter numbering: the report uses Chapters 1–24 for the body; the college template's items 7–30 correspond to Chapters 1–24 respectively.*
+| 4   | Abstract |
+| 5   | Table of Contents |
+| 6   | Chapter 1: Introduction |
+| 7   | Chapter 2: Problem Statement |
+| 8   | Chapter 3: Objectives |
+| 9   | Chapter 4: Existing System |
+| 10  | Chapter 5: Proposed System |
+| 11  | Chapter 6: Scope |
+| 12  | Chapter 7: Functional Requirements |
+| 13  | Chapter 8: Non-Functional Requirements |
+| 14  | Chapter 9: System Architecture |
+| 15  | Chapter 10: Use Case Diagram |
+| 16  | Chapter 11: Class Diagram |
+| 17  | Chapter 12: Sequence Diagrams |
+| 18  | Chapter 13: Activity Diagrams |
+| 19  | Chapter 14: ER Diagram |
+| 20  | Chapter 15: Database Design |
+| 21  | Chapter 16: UI Design |
+| 22  | Chapter 17: Implementation |
+| 23  | Chapter 18: Testing |
+| 24  | Chapter 19: Results |
+| 25  | Chapter 20: Advantages |
+| 26  | Chapter 21: Limitations |
+| 27  | Chapter 22: Future Enhancements |
+| 28  | Chapter 23: Conclusion |
+| 29  | Chapter 24: References |
 
 ---
 
@@ -1323,14 +1313,14 @@ The user interface of the Student Feedback Management System follows a clean, mi
 ### Login Page (`login.html`)
 A centered card layout containing a form with two input fields (identifier/email or roll number, password), a "Login" button, and a link to the registration page for new students. Flash messages appear above the form for success or error feedback. The design is minimal — no navigation bar (user is not authenticated yet). Background uses the light gray color with a white card centered vertically and horizontally on the viewport.
 
-![Figure 16.1: Login Page](docs/screenshots/login.png){width=6.0in}
+![Figure 16.1: Login Page](docs/screenshots/login.png){width=5.2in}
 
 *Figure 16.1: Login page — multi-role authentication form for students, admins, and faculty.*
 
 ### Registration Page (`register.html`)
 Similar centered card layout to login but with four input fields: full name, roll number, email address, and password (with confirm-password field for verification). A "Register" button submits the form; a link back to login is provided below. Client-side JavaScript validates that all fields are filled, email format is correct, and passwords match before allowing submission.
 
-![Figure 16.2: Registration Page](docs/screenshots/registration.png){width=6.0in}
+![Figure 16.2: Registration Page](docs/screenshots/registration.png){width=5.2in}
 
 *Figure 16.2: Registration page — student account creation form with roll number verification.*
 
@@ -1339,7 +1329,7 @@ A full-width page with a navigation bar at the top (displaying user's name, role
 1. **Feedback Submission Form**: A card containing dropdown for category selection, star rating selector (interactive 5-star component), multi-line text textarea for comment, and an "I want to remain anonymous" checkbox with a submit button.
 2. **My Feedback History**: A table below the form showing all previously submitted feedback entries with columns: Category (color-coded badge), Rating (star display), Comment Preview (truncated at ~100 characters), Status (colored badge matching Pending/In Progress/Resolved color scheme), and Date.
 
-![Figure 16.3: Student Dashboard](docs/screenshots/student_dashboard.png){width=6.0in}
+![Figure 16.3: Student Dashboard](docs/screenshots/student_dashboard.png){width=5.2in}
 
 *Figure 16.3: Student dashboard — feedback submission form with personal history table.*
 
@@ -1354,7 +1344,7 @@ Accessed by clicking a row in the admin dashboard table. Displays full details o
 ### Faculty Dashboard (`faculty_dashboard.html`)
 A full-width page with faculty navigation bar and a stats row at the top showing total feedback count, pending review count, and escalated item count as large number cards. Below is a table of department-filtered feedback (excluding 5-star ratings) with columns: Date, Category (with department sub-label), Rating stars, Status badge with MATCH/ESCALATED tags, Subject Match indicator, Comment preview, Countdown timer showing time remaining before escalation deadline, and a "Review" action link. Items matching the faculty's subject_taught are highlighted in green; escalated items have red background highlighting. The table is sorted by priority: subject matches first, then pinned/escalated items.
 
-![Figure 16.4: Faculty Dashboard](docs/screenshots/faculty_dashboard.png){width=6.0in}
+![Figure 16.4: Faculty Dashboard](docs/screenshots/faculty_dashboard.png){width=5.2in}
 
 *Figure 16.4: Faculty dashboard — department-filtered feedback with escalation tracking and countdown timers.*
 
