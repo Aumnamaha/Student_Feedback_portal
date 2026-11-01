@@ -60,7 +60,7 @@ NARROW_IMAGES = {
 
 
 def preprocess_markdown():
-    """Read Project_Report.md → write build/_preprocessed.md."""
+    """Read Project_Report.md -> write build/_preprocessed.md."""
     with open(INPUT_MD, encoding='utf-8') as f:
         content = f.read()
 
@@ -136,7 +136,7 @@ def preprocess_markdown():
                 i += 1
                 continue
 
-            # Non-table, non-heading content before 19.4 → just append
+            # Non-table, non-heading content before 19.4 -> just append
             new_lines.append(line)
             i += 1
             continue
@@ -168,7 +168,7 @@ def preprocess_markdown():
             new_lines2.append(line)
             continue
 
-        # Non-table line after being inside the 19.4 table → insert frames now.
+        # Non-table line after being inside the 19.4 table -> insert frames now.
         if in_194_section and inside_194_table:
             for idx, (name, path) in enumerate(SCREENSHOT_ROWS, 1):
                 caption = f"*Figure 19.{idx}: {name}*"
@@ -176,9 +176,9 @@ def preprocess_markdown():
                 if os.path.exists(full_path):
                     new_lines2.append("")
                     new_lines2.append(caption)
-                    # Screenshots: max 5.2in wide so two with captions fit on one page
+                    # Screenshots: ~2.8in wide so two with captions fit per page
                     new_lines2.append(
-                        f'![Figure 19.{idx}: {name}]({path}){{width=5.2in}}'
+                        f'![Figure 19.{idx}: {name}]({path}){{width=2.8in}}'
                     )
                 else:
                     new_lines2.append("")
@@ -198,7 +198,7 @@ def preprocess_markdown():
     os.makedirs(BUILD_DIR, exist_ok=True)
     with open(PREPROC_MD, "w", encoding="utf-8") as f:
         f.write(content)
-    print(f"[A] Preprocessed markdown → {PREPROC_MD} ({os.path.getsize(PREPROC_MD)} bytes)")
+    print(f"[A] Preprocessed markdown -> {PREPROC_MD} ({os.path.getsize(PREPROC_MD)} bytes)")
 
 
 # ---------------------------------------------------------------------------
@@ -600,7 +600,7 @@ def generate_reference_docx():
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    print(f"[B] Reference docx → {REF_DOCX}")
+    print(f"[B] Reference docx -> {REF_DOCX}")
 
 
 # ---------------------------------------------------------------------------
@@ -608,7 +608,7 @@ def generate_reference_docx():
 # ---------------------------------------------------------------------------
 
 def run_pandoc():
-    """Run pandoc to convert preprocessed markdown → build/_raw.docx."""
+    """Run pandoc to convert preprocessed markdown -> build/_raw.docx."""
     try:
         import pypandoc
     except ImportError as e:
@@ -630,7 +630,7 @@ def run_pandoc():
         print(f"[B] pandoc stderr:\n{result.stderr}")
         sys.exit(1)
     size = os.path.getsize(RAW_DOCX)
-    print(f"[B] Raw docx → {RAW_DOCX} ({size:,} bytes)")
+    print(f"[B] Raw docx -> {RAW_DOCX} ({size:,} bytes)")
 
 
 # ---------------------------------------------------------------------------
@@ -714,10 +714,8 @@ def post_process():
         for run in first_h1.runs:
             run.font.size = Pt(24)
             run.font.bold = True
-        try:
-            first_h1.style = doc.styles["Title"]
-        except KeyError:
-            pass  # Title style may not exist; that's OK.
+        # Do NOT assign Title style — pandoc strips it from HTML output.
+        # Instead, keep it as Heading 1 but center and enlarge it directly.
         first_h1.paragraph_format.page_break_before = False
 
         # Center all following paragraphs until next H1 or page-break div.
@@ -733,32 +731,93 @@ def post_process():
                 break
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
-    # ---- (b) Replace [[TOC]] marker with Word TOC field ----
+    # ---- (a2) Force page breaks between front-matter sections ----
+    # Even though H1 style has pageBreakBefore defined, pandoc doesn't always
+    # emit it. Set it explicitly on Certificate, Declaration, Abstract.
+    for p in doc.paragraphs:
+        text = p.text.strip()
+        if text in ("Certificate", "Declaration", "Abstract"):
+            try:
+                p.paragraph_format.page_break_before = True
+            except Exception:
+                pass  # paragraph format may not support it — skip.
+    
+    # ---- (b) Replace [[TOC]] marker with STATIC TOC entries ----
+    front_matter_headings = {
+        "Student Feedback Management System",
+        "A Comprehensive Project Report",
+        "Certificate",
+        "Declaration",
+        "Table of Contents",
+        "Abstract",
+    }
+    toc_entries = []  # (level, text) for H1 and H2 only
+    current_h1_num = None
+    current_h1_text = None
+
+    for p in list(doc.paragraphs):
+        style_name = (p.style.name or "").strip().lower()
+        is_h1 = "heading 1" in style_name
+        is_h2 = "heading 2" in style_name
+        if not (is_h1 or is_h2):
+            continue
+        text = p.text.strip()
+        if not text:
+            continue
+        # Skip front-matter headings
+        if text in front_matter_headings:
+            continue
+        # Extract chapter number from H1 like "Chapter 1: Introduction"
+        if is_h1:
+            import re as _re2
+            m = _re2.match(r"Chapter\s+(\d+)", text)
+            if m:
+                current_h1_num = int(m.group(1))
+                current_h1_text = text.replace(f"Chapter {current_h1_num}: ", "")
+                # Add chapter-level TOC entry (level 1 = bold, with dotted tab leader)
+                toc_entries.append((1, f"Chapter {current_h1_num}: {current_h1_text}"))
+            else:
+                current_h1_num = None
+                current_h1_text = text
+        elif is_h2 and current_h1_num is not None:
+            # Section like "1.1 Overview ..."
+            m = _re2.match(r"(\d+\.\d+)\s+(.*)", text)
+            if m:
+                # Add section-level TOC entry (level 2 = indented, no number prefix)
+                toc_entries.append((2, f"{m.group(0)}"))
+
     for p in list(doc.paragraphs):
         text = "".join(run.text for run in p.runs)
         if "[[TOC]]" in text:
-            p.clear()
-            ns_xml = "{http://www.w3.org/XML/1998/namespace}space"
-
-            # Run 0: fldChar begin
-            r1 = p.add_run()
-            _lxml_et.SubElement(r1._element, f"{w_ns}fldChar",
-                                {f"{w_ns}fldCharType": "begin"})
-            # Run 1: instrText
-            r2 = p.add_run()
-            _lxml_et.SubElement(
-                r2._element, f"{w_ns}instrText", {ns_xml: "preserve"}).text = 'TOC \\o "1-2" \\h \\z \\u'
-            # Run 2: fldChar separate
-            r3 = p.add_run()
-            _lxml_et.SubElement(r3._element, f"{w_ns}fldChar",
-                                {f"{w_ns}fldCharType": "separate"})
-            # Run 3: placeholder text
-            r4 = p.add_run()
-            r4.text = "Right-click here and choose Update Field to build the table of contents."
-            # Run 4: fldChar end
-            r5 = p.add_run()
-            _lxml_et.SubElement(r5._element, f"{w_ns}fldChar",
-                                {f"{w_ns}fldCharType": "end"})
+            # Insert TOC entries AFTER this paragraph (not at end of doc)
+            parent_elem = p._element.getparent()
+            idx_in_parent = list(parent_elem).index(p._element)
+            
+            has_right_tab = False
+            for level, entry_text in toc_entries:
+                tp = doc.add_paragraph()
+                run = tp.add_run()
+                if level == 1:  # Chapter-level (bold, with dotted tab leader)
+                    run.font.size = Pt(11)
+                    run.font.bold = True
+                    if not has_right_tab:
+                        tp.paragraph_format.tab_stops.add_tab_stop(
+                            D_Inches(6.5), alignment=WD_ALIGN_PARAGRAPH.RIGHT,
+                            leader=1  # dotted leader
+                        )
+                        has_right_tab = True
+                    run.text = entry_text + "\t"
+                else:  # Section-level (indented)
+                    run.font.size = Pt(10)
+                    tp.paragraph_format.left_indent = D_Inches(0.3)
+                    run.text = entry_text
+                
+                # Insert this paragraph right after the TOC heading
+                parent_elem.insert(idx_in_parent + 1, tp._element)
+                idx_in_parent += 1
+            
+            # Remove the now-empty [[TOC]] paragraph itself.
+            p._element.getparent().remove(p._element)
 
     VAL = w_ns + "val"  # attribute key for w:val
 
@@ -829,11 +888,29 @@ def post_process():
     # carry <w:pageBreakBefore/> in their styles, and pandoc inserts them
     # from the markdown div blocks.  Keep only breaks that share a run with
     # text (inline page breaks) — those must stay.
+    #
+    # EXCEPTION: Preserve page-break-only paragraphs that precede front-matter
+    # headings (Certificate, Declaration, Abstract). Even though H1 style has
+    # pageBreakBefore defined, pandoc doesn't emit it for every H1; it relies
+    # on the explicit div blocks. Without these breaks, Certificate/Declaration
+    # would run together with Title Page.
+    FRONT_MATTER_HEADINGS = {"Certificate", "Declaration", "Abstract",
+                             "Table of Contents"}
     body = doc.element.body
     new_body_elems = []
     for p_elem in list(body):
         if _is_pagebreak_only_para(p_elem):
-            continue  # skip this explicit break paragraph
+            # Check next paragraph to decide whether to keep this break.
+            idx_in_list = list(body).index(p_elem)
+            next_elem = body[idx_in_list + 1] if idx_in_list + 1 < len(list(body)) else None
+            skip = True  # default: remove it
+            if next_elem is not None:
+                for t_el in next_elem.iter(f"{w_ns}t"):
+                    if t_el.text and t_el.text.strip() in FRONT_MATTER_HEADINGS:
+                        skip = False  # keep this page break!
+                        break
+            if skip:
+                continue  # skip this explicit break paragraph
         new_body_elems.append(p_elem)
     # Also strip empty paragraphs that directly follow a removed page-break.
     final_elems = []
@@ -991,7 +1068,7 @@ def post_process():
                 temp_img_p.clear()
                 run = temp_img_p.add_run()
                 # Screenshots at 5.2in so two with captions fit on one page
-                run.add_picture(full_path, width=DInches(5.2))
+                run.add_picture(full_path, width=DInches(2.8))
                 img_body_elem = temp_img_p._element
                 parent_elem.insert(idx_in_parent, img_body_elem)
             except Exception as e:
@@ -1111,12 +1188,24 @@ def post_process():
         if body_elem is None:
             body_elem = root_pb
 
-        # Remove page-break-only paragraphs.
+        # Remove page-break-only paragraphs (same logic as python-docx pass).
+        FRONT_MATTER_HEADINGS = {"Certificate", "Declaration", "Abstract",
+                                 "Table of Contents"}
+        body_list = list(body_elem)
         new_body_elems = []
-        for p_elem in list(body_elem):
+        for idx, p_elem in enumerate(body_list):
             tag_local = p_elem.tag.split("}")[-1] if "}" in p_elem.tag else p_elem.tag
             if tag_local == "p" and _is_pagebreak_only_elem(p_elem):
-                continue  # skip explicit page-break paragraph
+                # Check next paragraph to decide whether to keep this break.
+                next_elem = body_list[idx + 1] if idx + 1 < len(body_list) else None
+                skip = True
+                if next_elem is not None:
+                    for t_el in next_elem.iter(f"{{{ns_w_pb}}}t"):
+                        if t_el.text and t_el.text.strip() in FRONT_MATTER_HEADINGS:
+                            skip = False  # keep this page break!
+                            break
+                if skip:
+                    continue  # skip explicit page-break paragraph
             new_body_elems.append(p_elem)
         # Also strip empty paragraphs that directly follow a removed page-break.
         final_elems = []
@@ -1429,7 +1518,7 @@ def post_process():
                     # Already has correct PAGE field structure — skip.
                     continue
 
-                # No proper field → rebuild from scratch.
+                # No proper field -> rebuild from scratch.
                 p_elem.clear()
                 ns_xml = "{http://www.w3.org/XML/1998/namespace}space"
 
@@ -1476,7 +1565,7 @@ def post_process():
     # ---- Resize oversized images to fit A4 printable area ----
     # Single source of truth: native pixel size from PIL image file.
     # Set EXACTLY the same (cx, cy) on BOTH wp:extent and a:xfrm/a:ext.
-    MAX_W_IN = 5.8            # general cap — screenshots at 5.2in via per-image logic
+    MAX_W_IN = 5.8            # general cap for diagrams; screenshots are smaller via markdown attr
     MAX_H_IN = 8.0            # usable page height ~9.7in; caption + heading need rest
     EMU_PER_INCH = 914400
     DPI = 150                 # baseline dpi for width/height conversion
@@ -1727,7 +1816,7 @@ def post_process():
     # Set updateFields in settings.xml (must be after python-docx writes).
     _set_update_fields(OUTPUT_DOCX)
 
-    print(f"[C] Final docx → {OUTPUT_DOCX} ({os.path.getsize(OUTPUT_DOCX):,} bytes)")
+    print(f"[C] Final docx -> {OUTPUT_DOCX} ({os.path.getsize(OUTPUT_DOCX):,} bytes)")
 
 
 # ---------------------------------------------------------------------------
@@ -1900,7 +1989,7 @@ def verify():
                                     pix = page.get_pixmap(dpi=60)
                                     pix.save(png_path)
                                     sz = os.path.getsize(png_path)
-                                    print(f"       Rendered page {pg+1} → {sz} bytes")
+                                    print(f"       Rendered page {pg+1} -> {sz} bytes")
                         except Exception as e2:
                             print(f"       [WARN] Page rendering skipped: {e2}")
 

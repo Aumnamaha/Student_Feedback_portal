@@ -23,7 +23,7 @@ Object-Oriented Software Engineering (OOSE) Lab
 
 **Department of Computer Science & Engineering / Artificial Intelligence & Machine Learning**  
 **GITAM University, Hyderabad**  
-**[Academic Year: 2025–2026]**
+**Academic Year: 2026-2027**
 
 ---
 
@@ -31,7 +31,7 @@ Object-Oriented Software Engineering (OOSE) Lab
 
 # Certificate
 
-This is to certify that **T. Aum Namaha**, Reg. No. **2023001973**, of **AIML B**, Department of Computer Science & Engineering / Artificial Intelligence & Machine Learning, **GITAM University, Hyderabad**, has satisfactorily completed the project **"Student Feedback Management System"** for the course **Object-Oriented Software Engineering (OOSE) Lab** during the academic year **2025–2026**.
+This is to certify that **T. Aum Namaha**, Reg. No. **2023001973**, of **AIML B**, Department of Computer Science & Engineering / Artificial Intelligence & Machine Learning, **GITAM University, Hyderabad**, has satisfactorily completed the project **"Student Feedback Management System"** for the course **Object-Oriented Software Engineering (OOSE) Lab** during the academic year **2026-2027**.
 
 <br><br>
 
