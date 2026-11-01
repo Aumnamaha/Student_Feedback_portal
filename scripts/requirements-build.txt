@@ -1,0 +1,6 @@
+pymupdf
+pillow
+pypandoc_binary
+python-docx
+lxml
+playwright

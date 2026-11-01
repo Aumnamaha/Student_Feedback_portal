@@ -2,6 +2,8 @@
 
 A web-based application for students to submit structured feedback about campus life (food, faculty, infrastructure, events, etc.) and for administrators to view, categorize, track, and resolve that feedback. Built as an Object-Oriented Software Engineering (OOSE) lab project.
 
+📄 Final project report (PDF): [docs/Project_Report.pdf](docs/Project_Report.pdf)
+
 ---
 
 ## Features
@@ -231,6 +233,26 @@ The server will start on `http://127.0.0.1:5000` (or another port if configured)
 
 ![ER Diagram](docs/images/05_er_diagram.png)
 *Entity-Relationship diagram — database schema relationships and cardinality.*
+
+---
+
+## Build the Project Report
+
+To regenerate the final project report PDF from source:
+
+```bash
+# Install build dependencies
+pip install -r scripts/requirements-build.txt
+playwright install chromium
+
+# (Optional) Regenerate DOCX first if Project_Report.md was updated
+python scripts/build_report_docx.py
+
+# Build PDF via Playwright Chromium
+python scripts/build_pdf.py
+```
+
+The output is `build/Project_Report.pdf` (63 pages). The PDF is also committed to this repo under [docs/Project_Report.pdf](docs/Project_Report.pdf) for easy access.
 
 ---
 
