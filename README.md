@@ -1,8 +1,21 @@
-# Student Feedback Management System
+# 🏛️ Student Feedback Management System
 
-A web-based application for students to submit structured feedback about campus life (food, faculty, infrastructure, events, etc.) and for administrators to view, categorize, track, and resolve that feedback. Built as an Object-Oriented Software Engineering (OOSE) lab project.
+> **Spec-driven 4-role RBAC feedback portal with embedded UML specs, threaded comments, escalation workflows, and 100% test coverage.**
+
+[![Python](https://img.shields.io/badge/Python-3.8%2B-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/Flask-000000?style=for-the-badge&logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
+[![pytest](https://img.shields.io/badge/pytest-100%25_passing-brightgreen?style=for-the-badge&logo=pytest&logoColor=white)](tests/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=for-the-badge)](LICENSE)
+
+---
+
+## 📋 Executive Summary
+
+A web-based application for students to submit structured feedback about campus life (food, faculty, infrastructure, events, etc.) and for administrators to view, categorize, track, and resolve that feedback. Built as an Object-Oriented Software Engineering (OOSE) lab project with **4-role RBAC**, embedded UML specifications, threaded comments, escalation workflows, and comprehensive test coverage.
 
 📄 Final project report (PDF): [docs/Project_Report.pdf](docs/Project_Report.pdf)
+
+---
 
 ---
 
